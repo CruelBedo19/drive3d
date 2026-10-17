@@ -10,14 +10,16 @@ function boot(): void {
   if (!container) throw new Error('#app container missing');
 
   // Developer / old links: ?track=test|nordschleife, ?car=<id>, ?setup=STREET|SPORT|DRIFT start driving
-  // straight away (menus skipped, nothing saved). ?admin: super-admin panel (always on in dev).
+  // straight away (menus skipped, nothing saved); ?seed=<n> picks the Autobahn seed. ?admin: super-admin panel (always on in dev).
   const params = new URLSearchParams(window.location.search);
   const track = params.get('track')?.toLowerCase() ?? null;
   const car = params.get('car');
   const setup = params.get('setup')?.toUpperCase() ?? null;
+  const seedParam = params.get('seed');
+  const seed = seedParam !== null && /^\d+$/.test(seedParam) ? Number(seedParam) : undefined;
   const direct =
     params.has('track') || params.has('car') || params.has('setup')
-      ? { track: isTrackId(track) ? track : undefined, car: findCar(car)?.id, setup: isSetupId(setup) ? setup : undefined }
+      ? { track: isTrackId(track) ? track : undefined, car: findCar(car)?.id, setup: isSetupId(setup) ? setup : undefined, seed }
       : null;
   const admin = import.meta.env.DEV || params.has('admin');
 

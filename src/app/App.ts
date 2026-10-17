@@ -21,7 +21,7 @@ import { PRESET_HOURS } from '../world/weather/WeatherState';
 export interface AppOptions {
   admin: boolean;
   /** Developer start (?track= / ?car= / ?setup=): skip the menus, nothing is saved. */
-  direct: { track?: TrackId; car?: string; setup?: SetupId } | null;
+  direct: { track?: TrackId; car?: string; setup?: SetupId; seed?: number } | null;
 }
 
 const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
@@ -257,7 +257,7 @@ export class App {
       await nextFrame();
       if (token !== this.loadToken) return physics.dispose();
       const ctx: SessionContext = { container: this.container, renderer: this.renderer, input: this.input, settings: this.settings, admin: this.options.admin, carIds: CAR_REGISTRY.map((c) => c.id), frameTimer: this.frameTimer };
-      const game = new Game(ctx, physics, { car, setup, track, weather: p.weather, hour: profileHour(p, PRESET_HOURS) });
+      const game = new Game(ctx, physics, { car, setup, track, weather: p.weather, hour: profileHour(p, PRESET_HOURS), seed: this.options.direct?.seed });
       this.loading.stage('Araç modeli yükleniyor…');
       await game.modelReady;
       if (token !== this.loadToken) return game.dispose();

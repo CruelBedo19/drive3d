@@ -37,5 +37,24 @@ export interface Track extends MapDataProvider {
   update(view?: TrackView): void;
   /** Wet-road look 0..1 (weather): darker, smoother asphalt reflecting a little more sky. Visual only. */
   setWetness?(wetness: number): void;
+  /**
+   * Streamed worlds: keep the world (meshes + colliders) built around this
+   * point. Called by the simulation every step; `immediate` builds everything
+   * at once (spawn, teleport).
+   */
+  stream?(position: THREE.Vector3, immediate?: boolean): void;
+  /** Nearest safe place to put the car back (else the spawn point). */
+  safeRespawn?(near: THREE.Vector3): SpawnPoint;
+  /** Too far from the playable area: the car is brought back. */
+  outOfBounds?(position: THREE.Vector3): boolean;
+  /** 0..1 roof over this point (tunnels): no rain, darker ambient light. */
+  coverAt?(position: THREE.Vector3): number;
+  /** Changes when `mapData` changes (streamed worlds); static tracks leave it undefined. */
+  readonly mapRevision?: number;
+  /** Developer numbers for F2. */
+  debugInfo?(): Record<string, string | number>;
+  /** Rebuild the world from another seed (procedural tracks, F2). */
+  regenerate?(seed: number): void;
+  readonly seed?: number;
   dispose(): void;
 }

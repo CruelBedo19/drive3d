@@ -6,6 +6,7 @@ import { getPath, setPath } from './configPath';
 import { TelemetryGraph } from './TelemetryGraph';
 import { TUNING_GROUPS, type TuningParam } from './tuningSchema';
 import { TuningStore } from './TuningStore';
+import { MapAdminPane } from './MapAdminPane';
 import { WeatherAdminPane } from './WeatherAdminPane';
 
 interface ParamRow {
@@ -43,6 +44,7 @@ export class AdminPanel {
   private readonly pauseButton: HTMLButtonElement;
   private tab: 'tune' | 'test' | 'world' = 'tune';
   private weatherPane: WeatherAdminPane | null = null;
+  private mapPane: MapAdminPane | null = null;
   private open = false;
   private uiTimer = 0;
   private base: VehicleConfig;
@@ -112,6 +114,13 @@ export class AdminPanel {
       </section>
       <section class="admin-body" data-pane="world" hidden></section>`;
     parent.appendChild(this.root);
+    if (host.trackDebug && host.regenerateTrack) {
+      const pane = new MapAdminPane({ trackDebug: () => host.trackDebug?.() ?? null, regenerateTrack: (seed) => host.regenerateTrack?.(seed) });
+      if (pane.available) {
+        this.mapPane = pane;
+        this.q('[data-pane="world"]').appendChild(pane.root);
+      }
+    }
     if (host.weather) {
       this.weatherPane = new WeatherAdminPane(host.weather);
       this.q('[data-pane="world"]').appendChild(this.weatherPane.root);
@@ -182,6 +191,7 @@ export class AdminPanel {
       this.renderMeasurements();
     } else if (this.tab === 'world') {
       this.weatherPane?.sync();
+      this.mapPane?.sync();
     }
   }
 

@@ -1,4 +1,4 @@
-# Drive3D — Phase 3: game flow, garage, weather
+# Drive3D — game flow, garage, weather, Autobahn
 
 TypeScript + Vite + Three.js + Rapier 3D.
 
@@ -8,6 +8,7 @@ PORT=$(freeport) && npm run dev -- --port $PORT   # http://localhost:$PORT
 npm run build       # typecheck + production build
 npm run test:sim    # headless tests: phase 1 driving, phase 2 physics, glTF/visuals, tracks
 npm run test:track  # Nordschleife checks + a full autopilot lap (~2 min CPU)
+npm run test:autobahn # Autobahn checks + long autopilot drives incl. 50 km at 300 km/h (~17 min CPU)
 npm run build:track # rebuild the Nordschleife centre line from the cached OSM / SRTM data (--refresh downloads again)
 npm run bench       # physics cost per step
 npm run make:test-model   # regenerate the unbranded test GLB
@@ -15,7 +16,7 @@ npm run make:test-model   # regenerate the unbranded test GLB
 
 The game opens on the main menu: SÜR → map + weather → car confirm → loading → driving; GARAJ; AYARLAR.
 Developer / old links still start driving directly (menus skipped, nothing saved):
-`?track=test|nordschleife`, `?car=car_01|car_02|car_03` (old ids `placeholder`, `test-gltf` work), `?setup=STREET|SPORT|DRIFT`, `?admin`.
+`?track=test|nordschleife|autobahn`, `?seed=<n>` (Autobahn road seed, default 2026), `?car=car_01|car_02|car_03` (old ids `placeholder`, `test-gltf` work), `?setup=STREET|SPORT|DRIFT`, `?admin`.
 
 ## Game flow
 
@@ -105,6 +106,22 @@ Always on in `npm run dev`; in a production build only with `?admin` (a hidden s
   - Physics is one fixed body: a ground trimesh split into columns across the track, plus box guard rails.
     The ground stops before it would reach another part of the lap (the two Karussell legs are 29 m apart).
   - Admin teleports: start and eight corners (Hatzenbach … Döttinger Höhe).
+- `autobahn`: an endless, procedurally generated German motorway (Map Select: "Yüksek hız / Açık yol").
+  - Road = pure function of distance along it and a seed (`AUTOBAHN.seed`, 2026; `?seed=` or F2 to change).
+    Separate random streams plan curves (straights 0.9–3.2 km, sweepers R 1.5–4.5 km with clothoid-like ramps),
+    grades (≤ 4 %, 350 m vertical curves), environments (forest / open / hilly) and features, so the same seed
+    always gives the same road. `src/world/autobahn/RoadGenerator.ts`, settings in `AUTOBAHN` (`src/config/tracks.ts`).
+  - Cross-section: 3 + 3 lanes of 3.75 m, 3 m hard shoulders, a median with a concrete barrier, guard rails,
+    crossfall and up to 2° banking in curves. Markings are separate decals lifted above the asphalt (no z-fighting).
+  - Features: tunnels (lit tube, portals, no rain inside, tunnel ambient light), bridges over valleys, overpasses,
+    Ausfahrt exits with gantry signs and gore arrows, Raststätte rest areas with a fuel station (orange fuel marker
+    on the minimap), speed signs, reflector posts, emergency phones, noise walls. No traffic.
+  - Streaming: 200 m chunks, 3 behind / 8 ahead, 6 cached; each chunk is one fixed Rapier body (road trimesh,
+    terrain band, barrier boxes) built within a per-frame time budget; geometry merged per material, props instanced.
+    Trees follow the vegetation-distance setting.
+  - Shift+R puts the car back in the middle lane of the carriageway it is on, facing the traffic direction;
+    leaving the road by more than 260 m or falling respawns it the same way. Minimap follows the player.
+  - F2 → Dünya: seed, chunk counts, curvature, grade, banking, environment, object / collider counts, regenerate.
 
 ## Real car models (glTF)
 
@@ -159,13 +176,13 @@ src/
     visual/      VehicleVisual interface, PlaceholderCarVisual, GltfCarVisual, VisualParts (wheel rig, lamps)
   camera/    CameraRig with chase / close / hood modes
   input/     InputManager (raw keys), DrivingInput (smoothed driver controls)
-  world/     Track interface, TestTrack, nordschleife/ (centre line, strip meshes, colliders), tracks/*.json
+  world/     Track interface, TestTrack, nordschleife/ (centre line, strip meshes, colliders), autobahn/ (generator, chunks, assets), tracks/*.json
   ui/        Hud (player HUD), hud/Speedometer, map/ (MapData, Minimap), screens/ (menus, settings), dev debug overlay
   settings/  Settings schema + store (versioned), Profile (last map / car / weather)
   admin/     super admin panel: tuning schema, live config, presets, measurements, telemetry graph
   utils/     math, FPS counter
 public/assets/{vehicles,environment,audio}   (vehicles/test-car/test-car.glb: generated test model)
-scripts/     sim-test.ts, vehicle-test.ts, visual-test.ts, admin-test.ts, keyboard-test.ts, track-test.ts, hud-test.ts, phase3-test.ts, weather-test.ts, lib/sim.ts,
+scripts/     sim-test.ts, vehicle-test.ts, visual-test.ts, admin-test.ts, keyboard-test.ts, track-test.ts, hud-test.ts, phase3-test.ts, weather-test.ts, autobahn-test.ts, lib/sim.ts,
              bench.ts, make-test-model.ts, build-nordschleife.ts (+ data/ source cache)
 ```
 

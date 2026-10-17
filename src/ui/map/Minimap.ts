@@ -62,6 +62,8 @@ const STYLE = {
   route: '#4fd1c5',
   player: '#4fd1c5',
   start: '#ffffff',
+  fuel: '#f6a623',
+  poi: '#8fb8ff',
 };
 const MIN_PATH_PX = 3;
 /** Zoom out with speed: radius grows by this fraction at SPEED_ZOOM_FULL m/s. */
@@ -188,9 +190,12 @@ export class Minimap {
       return;
     }
     ctx.beginPath();
-    ctx.arc(m.x, m.z, (size * 0.02) / k, 0, Math.PI * 2);
-    ctx.fillStyle = STYLE.route;
+    ctx.arc(m.x, m.z, (size * (m.kind === 'fuel' ? 0.028 : 0.02)) / k, 0, Math.PI * 2);
+    ctx.fillStyle = m.kind === 'fuel' ? STYLE.fuel : m.kind === 'poi' ? STYLE.poi : STYLE.route;
     ctx.fill();
+    ctx.lineWidth = 1.5 / k;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.stroke();
   }
 
   /** Small "N" on the rim, pointing to north (-z) in rotating mode. */

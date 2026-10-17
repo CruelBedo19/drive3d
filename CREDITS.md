@@ -61,6 +61,21 @@ and not affiliated with or endorsed by BMW or Mercedes-AMG.
   headlights with a lit-air cone; **Velocity Rush** by prashant371
   (https://github.com/prashant371/velocity-rush, commit 4a760c9): weather-driven light presets and a night star field.
 
+## Autobahn references
+
+Ideas only, no code. Neither repository has a licence file, so nothing was copied from them; the Autobahn
+(`src/world/autobahn/`) is written for this project.
+
+- **nightdrive** by StarKnightt (https://github.com/StarKnightt/nightdrive, commit 9b918ae): the road as a pure
+  function of distance with an incrementally integrated centre line, ribbon chunks streamed around the player,
+  terrain carved to the road with an apron, instanced vegetation kept off the road.
+- **Three.js Driving Simulator** by sandeshs0 (https://github.com/sandeshs0/threejs-driving-simulator,
+  commit 7302648): features as spans along the road (hill mass over a tunnel, ravine under a bridge), a chunk as a
+  slice of the world, small vertical offsets to stack markings over asphalt, guard rails built per chunk.
+
+Signs use fictitious destinations; the styling follows the public German road-sign conventions (blue motorway
+panels, round speed signs).
+
 ## Libraries
 
 - Three.js — MIT — https://github.com/mrdoob/three.js

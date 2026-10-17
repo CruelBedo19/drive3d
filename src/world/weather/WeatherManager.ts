@@ -40,6 +40,12 @@ export class WeatherManager {
   private envScene: THREE.Scene | null = null;
   private envKey = '';
   private envTimer = Infinity;
+  /** 0..1 roof over the camera (tunnel), eased. */
+  private cover = 0;
+  private coverTarget = 0;
+  private coverSnap = false;
+  private readonly warm = new THREE.Color(0xffd7a0);
+  private readonly tmp = new THREE.Color();
 
   constructor(renderer: Renderer, track: Track, weather: WeatherKind, hour: number, quality: WeatherQuality) {
     this.renderer = renderer;
@@ -79,6 +85,21 @@ export class WeatherManager {
     this.state.setHour(hour);
   }
 
+  /** Roof over the camera 0..1 (tunnels): no rain inside, tunnel lighting instead of the sky. */
+  setCover(cover: number): void {
+    this.coverTarget = cover;
+  }
+
+  /** Jump straight to the next cover target (teleports, respawns): no fade from where the car was. */
+  snapCover(): void {
+    this.coverSnap = true;
+  }
+
+  /** Current (eased) cover. */
+  get underCover(): number {
+    return this.cover;
+  }
+
   setQuality(q: WeatherQuality): void {
     if (q === this.quality) return;
     this.quality = q;
@@ -94,6 +115,9 @@ export class WeatherManager {
    */
   update(dt: number, camera: THREE.Vector3, velocity: THREE.Vector3): void {
     this.state.update(dt);
+    // Eyes adapt quickly but not instantly at a portal (and instantly on teleports / pause).
+    this.cover = dt > 0 && !this.coverSnap ? this.cover + (this.coverTarget - this.cover) * (1 - Math.exp(-6 * dt)) : this.coverTarget;
+    this.coverSnap = false;
     this.snap = this.state.snapshot();
     this.apply(dt, camera, velocity);
   }
@@ -113,18 +137,20 @@ export class WeatherManager {
     (r.scene.background as THREE.Color).setHex(s.fogColor);
     r.fog.color.setHex(s.fogColor);
     r.setWeatherFogScale(s.visibility);
+    const c = this.cover;
     r.sun.color.setHex(s.lightColor);
-    r.sun.intensity = s.lightIntensity;
-    r.hemi.color.setHex(s.hemiSky);
-    r.hemi.groundColor.setHex(s.hemiGround);
-    r.hemi.intensity = s.hemiIntensity;
+    // Under a roof the sky's light is mostly blocked and the tunnel lamps take over (warm, constant).
+    r.sun.intensity = s.lightIntensity * (1 - 0.9 * c);
+    r.hemi.color.copy(this.tmp.setHex(s.hemiSky)).lerp(this.warm, c * 0.7);
+    r.hemi.groundColor.setHex(s.hemiGround).lerp(this.warm, c * 0.4);
+    r.hemi.intensity = s.hemiIntensity + (0.8 - s.hemiIntensity) * c;
     r.renderer.toneMappingExposure = s.exposure;
     // The renderer keeps the light at a fixed offset from the car for the shadow map.
     r.setSunOffset(this.lightDir.set(s.light.x, s.light.y, s.light.z).multiplyScalar(90));
     this.sky.update(dt, camera, s);
-    this.rain.update(dt, camera, s.rain, velocity, Math.max(0.15, s.daylight + s.night * 0.25));
+    this.rain.update(dt, camera, s.rain * (1 - c), velocity, Math.max(0.15, s.daylight + s.night * 0.25));
     this.updateEnvironment(dt);
-    r.scene.environmentIntensity = s.envIntensity;
+    r.scene.environmentIntensity = s.envIntensity * (1 - 0.8 * c);
     if (Math.abs(s.wetness - this.lastWetness) > 0.004) {
       this.lastWetness = s.wetness;
       this.track.setWetness?.(s.wetness);

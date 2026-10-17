@@ -258,7 +258,7 @@
 .map-cards {
   margin-top: clamp(16px, 3vh, 32px);
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
   gap: 18px;
   min-height: 0;
   overflow: auto;
@@ -304,6 +304,21 @@
   margin: 8px 0 0;
   font-size: 13px;
   line-height: 1.45;
+  color: var(--m-dim);
+}
+
+.map-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.map-tags span {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
   color: var(--m-dim);
 }
 

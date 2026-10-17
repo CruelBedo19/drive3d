@@ -48,6 +48,8 @@ export interface SessionOptions {
   car: CarEntry;
   setup: SetupId;
   track: TrackId;
+  /** Procedural tracks: world seed (default from the track config). */
+  seed?: number;
   weather: WeatherKind;
   hour: number;
 }
@@ -90,6 +92,7 @@ export class Game implements AdminHost {
   private readonly physicsDebug: PhysicsDebugRenderer | null;
   private readonly admin: AdminPanel | null = null;
   private settings: Readonly<GameSettings>;
+  private mapRevision: number | undefined;
   private disposed = false;
 
   constructor(ctx: SessionContext, physics: PhysicsWorld, options: SessionOptions) {
@@ -101,7 +104,7 @@ export class Game implements AdminHost {
     this.settings = ctx.settings.value;
     const renderer = ctx.renderer;
 
-    const track = createTrack(options.track, physics.world);
+    const track = createTrack(options.track, physics.world, options.seed);
     renderer.scene.add(track.group);
     renderer.setFog(track.fog?.near ?? DEFAULT_FOG.near, track.fog?.far ?? DEFAULT_FOG.far);
 
@@ -204,7 +207,7 @@ export class Game implements AdminHost {
     const p = this.sim.track.testPoints.find((t) => t.id === id);
     if (!p) return;
     this.sim.placeOnGround(p.position, p.yaw);
-    this.cameraRig.reset(this.cameraTarget);
+    this.resetView();
   }
 
   stepOnce(): void {
@@ -215,6 +218,18 @@ export class Game implements AdminHost {
   toggleDebugPanel(): boolean {
     this.debug?.toggle();
     return this.debug !== null;
+  }
+
+  trackDebug(): Record<string, string | number> | null {
+    return this.sim.track.debugInfo?.() ?? null;
+  }
+
+  /** F2: rebuild a procedural road from another seed and put the car at its start. */
+  regenerateTrack(seed: number): void {
+    if (!this.sim.track.regenerate) return;
+    this.sim.track.regenerate(seed);
+    this.sim.restartAtSpawn();
+    this.resetView();
   }
 
   toggleColliders(): boolean {
@@ -248,10 +263,16 @@ export class Game implements AdminHost {
     this.hud.setVisible(visible);
   }
 
+  /** After the car jumps somewhere: camera behind it, tunnel lighting without a fade. */
+  private resetView(): void {
+    this.cameraRig.reset(this.cameraTarget);
+    this.weather.snapCover();
+  }
+
   /** "Yeniden başlat": back to the start line, standing still. */
   restart(): void {
-    this.sim.respawnAtStart();
-    this.cameraRig.reset(this.cameraTarget);
+    this.sim.restartAtSpawn();
+    this.resetView();
   }
 
   /** Entering the pause menu: drop held input so nothing carries over on resume. */
@@ -288,7 +309,14 @@ export class Game implements AdminHost {
     this.cameraRig.update(simDt, this.cameraTarget);
     this.ctx.renderer.setShadowFocus(this.vehicle.renderPosition);
     this.sim.track.update({ camera: camera.position, vegetationDistance: VEGETATION_DISTANCE[this.settings.graphics.vegetationDistance] });
+    this.weather.setCover(this.sim.track.coverAt?.(camera.position) ?? 0);
     this.weather.update(running ? dt * this.timeScale : 0, camera.position, this.vehicle.physics.linearVelocity);
+    // Streamed tracks change their map as chunks load.
+    const rev = this.sim.track.mapRevision;
+    if (rev !== undefined && rev !== this.mapRevision) {
+      this.mapRevision = rev;
+      this.hud.setMapData(this.sim.track.mapData);
+    }
     const w = this.weather.snapshot;
     this.lampsOn = this.headlights.update(this.weather.headlightsWanted);
     this.headlightRig.update(this.lampsOn, Math.min(1, w.rain * 0.9 + (1 - Math.min(1, w.visibility)) * 0.8), Math.max(w.night, 1 - w.daylight));
@@ -388,10 +416,10 @@ export class Game implements AdminHost {
     const respawn = pressedBinding(input, c.respawn);
     if (respawn) {
       this.sim.respawnAtStart();
-      this.cameraRig.reset(this.cameraTarget);
+      this.resetView();
     } else if (pressedBinding(input, c.recover)) {
       this.sim.recoverInPlace();
-      this.cameraRig.reset(this.cameraTarget);
+      this.resetView();
     }
   }
 }

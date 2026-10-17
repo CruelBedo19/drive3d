@@ -27,4 +27,7 @@ export interface AdminHost {
   toggleColliders(): boolean;
   /** Live weather of the session (World / Weather tab), if any. */
   readonly weather?: WeatherManager;
+  /** Procedural track numbers (null for static maps). */
+  trackDebug?(): Record<string, string | number> | null;
+  regenerateTrack?(seed: number): void;
 }

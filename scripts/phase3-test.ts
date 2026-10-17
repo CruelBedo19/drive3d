@@ -17,6 +17,7 @@ import { PhysicsWorld } from '../src/core/PhysicsWorld';
 import { ProfileStore, type ProfileRules } from '../src/settings/Profile';
 import { SETTINGS_KEY, SettingsStore, defaultSettings, findKeyConflicts, isBindableKey, keyLabel } from '../src/settings/Settings';
 import { GltfCarVisual } from '../src/vehicle/visual/GltfCarVisual';
+import { AutobahnTrack } from '../src/world/autobahn/AutobahnTrack';
 import { NordschleifeTrack } from '../src/world/nordschleife/NordschleifeTrack';
 import { TestTrack } from '../src/world/TestTrack';
 import { createTrack } from '../src/world/createTrack';
@@ -216,11 +217,15 @@ async function main(): Promise<void> {
     const ns = trackInfo('nordschleife');
     const ys = data.points.map((q) => q[1]);
     check('map card stats come from the track data', !!ns && ns.length === data.length && ns.elevation === Math.round(Math.max(...ys) - Math.min(...ys)) && ns.corners === data.corners.length, `${((ns?.length ?? 0) / 1000).toFixed(2)} km, ${ns?.elevation} m, ${ns?.corners} corners`);
-    check('test track card', trackInfo('test')?.type.includes('Test') === true && TRACK_CATALOG.length === 2, `${TRACK_CATALOG.map((t) => t.name).join(', ')}`);
-    for (const id of ['test', 'nordschleife'] as const) {
+    check('test track card', trackInfo('test')?.type.includes('Test') === true && TRACK_CATALOG.length === 3, `${TRACK_CATALOG.map((t) => t.name).join(', ')}`);
+    const ab = trackInfo('autobahn');
+    check('Autobahn card: type, endless length, tags', ab?.type === 'Yüksek hız / Açık yol' && ab.length === Infinity && (ab.tags?.length ?? 0) >= 3, `${ab?.type}; ${ab?.tags?.join(', ')}`);
+    p.update({ trackId: 'autobahn' });
+    check('Autobahn selection is kept', p.value.trackId === 'autobahn', p.value.trackId);
+    for (const id of ['test', 'nordschleife', 'autobahn'] as const) {
       const physics = await PhysicsWorld.create();
       const track = createTrack(id, physics.world);
-      check(`loading "${id}" builds the right track`, id === 'test' ? track instanceof TestTrack : track instanceof NordschleifeTrack, track.constructor.name);
+      check(`loading "${id}" builds the right track`, id === 'test' ? track instanceof TestTrack : id === 'nordschleife' ? track instanceof NordschleifeTrack : track instanceof AutobahnTrack, track.constructor.name);
       track.dispose();
       physics.dispose();
     }

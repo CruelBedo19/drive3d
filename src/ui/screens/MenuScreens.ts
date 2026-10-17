@@ -83,8 +83,9 @@ export class MapSelect extends Screen {
             <span class="tag">${esc(t.type)}</span>
             <h2>${esc(t.name)}</h2>
             <p>${esc(t.description)}</p>
+            ${t.tags ? `<div class="map-tags">${t.tags.map((g) => `<span>${esc(g)}</span>`).join('')}</div>` : ''}
             <dl class="stats">
-              <div><dt>Uzunluk</dt><dd>${(t.length / 1000).toFixed(2)} km</dd></div>
+              <div><dt>Uzunluk</dt><dd>${Number.isFinite(t.length) ? `${(t.length / 1000).toFixed(2)} km` : 'Sınırsız'}</dd></div>
               ${t.elevation ? `<div><dt>Yükseklik farkı</dt><dd>${t.elevation} m</dd></div>` : ''}
               ${t.corners ? `<div><dt>İsimli viraj</dt><dd>${t.corners}</dd></div>` : ''}
               <div><dt>Ortam</dt><dd>${esc(t.environment)}</dd></div>

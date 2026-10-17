@@ -72,7 +72,10 @@ export class DrivingSim {
     // Still behind after the cap: drop the backlog rather than spiral.
     if (steps === GAME_CONFIG.physics.maxStepsPerFrame) this.accumulator = 0;
     this.stepsThisFrame = steps;
-    if (this.vehicle.physics.position.y < this.track.killHeight) this.respawnAtStart();
+    const pos = this.vehicle.physics.position;
+    // Streamed worlds build ahead of the car (cheap when nothing is due).
+    if (steps > 0) this.track.stream?.(pos);
+    if (pos.y < this.track.killHeight || this.track.outOfBounds?.(pos)) this.respawnAtStart();
     return steps;
   }
 
@@ -89,14 +92,26 @@ export class DrivingSim {
     this.place(this._pos, this.vehicle.yaw);
   }
 
-  /** Back to the track's start position. */
+  /** Back to the road: the nearest safe spot on streamed tracks, else the start position. */
   respawnAtStart(): void {
+    const s = this.track.safeRespawn?.(this.vehicle.physics.position) ?? this.track.spawn;
+    this.placeOnGround(s.position, s.yaw);
+  }
+
+  /** Back to the very start (restart). */
+  restartAtSpawn(): void {
     const s = this.track.spawn;
     this.placeOnGround(s.position, s.yaw);
   }
 
   /** Car at a ground point (y = road surface), standing still. */
   placeOnGround(ground: THREE.Vector3, yaw: number): void {
+    if (this.track.stream) {
+      this.track.stream(ground, true);
+      // New colliders only become visible to ray casts after a world step (Rapier's scene queries);
+      // the car is reset right after, so this step changes nothing else.
+      this.physics.step();
+    }
     this._pos.copy(ground).setY(ground.y + VehiclePhysics.restHeight(this.vehicle.config) + 0.05);
     this.place(this._pos, yaw);
   }
