@@ -1,0 +1,29 @@
+{
+  "name": "drive3d",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p scripts",
+    "test:sim": "tsx scripts/sim-test.ts && tsx scripts/vehicle-test.ts && tsx scripts/visual-test.ts && tsx scripts/admin-test.ts && tsx scripts/keyboard-test.ts && tsx scripts/track-test.ts && tsx scripts/hud-test.ts && tsx scripts/phase3-test.ts",
+    "test:track": "tsx scripts/track-test.ts --lap",
+    "build:track": "tsx scripts/build-nordschleife.ts",
+    "bench": "tsx scripts/bench.ts",
+    "make:test-model": "tsx scripts/make-test-model.ts",
+    "handling": "tsx scripts/handling-report.ts"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/three": "^0.186.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}

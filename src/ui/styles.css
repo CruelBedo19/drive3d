@@ -1,0 +1,309 @@
+:root {
+  --hud-fg: #f4f6f8;
+  --hud-dim: rgba(244, 246, 248, 0.6);
+  --hud-bg: rgba(12, 14, 18, 0.55);
+  --hud-accent: #4fd1c5;
+  --hud-red: #ff4d4d;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0b0d10;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+}
+
+#app canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hud {
+  /* Panel size: scaled by the setting, but never more than ~30% of the viewport height. */
+  --hud-scale: 1;
+  --hud-size: min(calc(var(--hud-panel, 210px) * var(--hud-scale)), 30vh, 40vw);
+  --hud-pad: max(16px, 1.6vmin, env(safe-area-inset-bottom), env(safe-area-inset-right));
+  --hud-pad-left: max(16px, 1.6vmin, env(safe-area-inset-left));
+  --hud-gap: 12px;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: var(--hud-fg);
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud[hidden] {
+  display: none;
+}
+
+/* Speedometer, bottom right ------------------------------------------------- */
+
+.hud-speedo {
+  position: absolute;
+  right: var(--hud-pad);
+  bottom: var(--hud-pad);
+  width: var(--hud-size);
+  height: var(--hud-size);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(12, 14, 18, 0.62) 58%, rgba(12, 14, 18, 0.35) 70%, transparent 71%);
+  font-size: calc(var(--hud-size) / 210 * 16px);
+}
+
+.hud.no-speedo .hud-speedo {
+  display: none;
+}
+
+.hud-speedo-gauge {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.hud-speedo-gauge path {
+  fill: none;
+  stroke-width: 9;
+  stroke-linecap: butt;
+}
+
+.hud-arc-track {
+  stroke: rgba(255, 255, 255, 0.12);
+}
+
+.hud-arc-red {
+  stroke: rgba(255, 77, 77, 0.45);
+}
+
+.hud-arc-fill {
+  stroke: var(--hud-accent);
+  transition: stroke 0.1s;
+}
+
+.hud-speedo.is-redline .hud-arc-fill {
+  stroke: var(--hud-red);
+}
+
+.hud-arc-ticks line {
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 2;
+}
+
+.hud-arc-ticks line.is-red {
+  stroke: var(--hud-red);
+}
+
+.hud-speedo-readout {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 0.4em;
+}
+
+.hud-speedo-speed {
+  font-size: 3.6em;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.hud-speedo-unit {
+  margin-top: 0.15em;
+  font-size: 0.78em;
+  color: var(--hud-dim);
+  letter-spacing: 0.08em;
+}
+
+.hud-speedo-gear {
+  margin-top: 0.55em;
+  display: flex;
+  align-items: baseline;
+  gap: 0.35em;
+  font-size: 0.8em;
+  color: var(--hud-dim);
+  letter-spacing: 0.1em;
+}
+
+.hud-speedo-gear b {
+  font-size: 1.9em;
+  line-height: 1;
+  color: var(--hud-accent);
+  letter-spacing: 0;
+  min-width: 1ch;
+  text-align: center;
+}
+
+.hud-speedo-lamps {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6%;
+  display: flex;
+  justify-content: center;
+  gap: 0.35em;
+  font-size: 0.62em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.hud-lamp {
+  padding: 0.15em 0.45em;
+  border-radius: 0.3em;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--hud-dim);
+}
+
+.hud-lamp[data-state='off'] {
+  opacity: 0.3;
+  text-decoration: line-through;
+}
+
+.hud-lamp[data-state='active'] {
+  color: #1a1300;
+  background: #f6c945;
+  border-color: #f6c945;
+}
+
+.hud-lamp-warn[data-state='off'] {
+  display: none;
+}
+
+.hud-lamp-warn[data-state='active'] {
+  color: #fff;
+  background: var(--hud-red);
+  border-color: var(--hud-red);
+}
+
+/* Minimap, bottom left (or right, stacked above the speedometer) ------------ */
+
+.hud-minimap {
+  position: absolute;
+  left: var(--hud-pad-left);
+  bottom: var(--hud-pad);
+  width: var(--hud-size);
+  height: var(--hud-size);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.hud.minimap-right .hud-minimap {
+  left: auto;
+  right: var(--hud-pad);
+  bottom: calc(var(--hud-pad) + var(--hud-size) + var(--hud-gap));
+  width: calc(var(--hud-size) * 0.8);
+  height: calc(var(--hud-size) * 0.8);
+}
+
+.hud.minimap-right.no-speedo .hud-minimap {
+  bottom: var(--hud-pad);
+}
+
+.hud.no-minimap .hud-minimap {
+  display: none;
+}
+
+.hud-minimap-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Small things -------------------------------------------------------------- */
+
+.hud-fps {
+  position: absolute;
+  top: var(--hud-pad);
+  right: var(--hud-pad);
+  font-size: 12px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--hud-bg);
+  color: var(--hud-dim);
+}
+
+.hud.no-fps .hud-fps {
+  display: none;
+}
+
+.hud-toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--hud-pad) + 48px);
+  transform: translateX(-50%);
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: var(--hud-bg);
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.hud-toast.is-on {
+  opacity: 1;
+}
+
+.hud-help {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--hud-pad) + 14px);
+  transform: translateX(-50%);
+  max-width: calc(100vw - 2 * var(--hud-size) - 4 * var(--hud-pad));
+  font-size: 12px;
+  text-align: center;
+  color: var(--hud-dim);
+  background: var(--hud-bg);
+  padding: 5px 9px;
+  border-radius: 6px;
+  transition: opacity 1s;
+}
+
+.hud-help.is-off {
+  opacity: 0;
+}
+
+.hud-attribution {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  font-size: 10px;
+  white-space: nowrap;
+  color: var(--hud-dim);
+}
+
+.debug-overlay {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  margin: 0;
+  padding: 10px 12px;
+  font: 12px/1.45 ui-monospace, 'JetBrains Mono', Menlo, monospace;
+  color: #d8ffe0;
+  background: rgba(0, 0, 0, 0.65);
+  border-radius: 8px;
+  pointer-events: none;
+  white-space: pre;
+}
+
+.boot-error {
+  position: fixed;
+  inset: 20px;
+  color: #ffb4b4;
+  font: 14px/1.5 ui-monospace, monospace;
+}
