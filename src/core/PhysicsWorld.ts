@@ -18,6 +18,12 @@ export class PhysicsWorld {
 
   private static ready: Promise<void> | null = null;
 
+  /** Initialise Rapier's WASM ahead of time (the boot preloader), so the first session starts at once. */
+  static async warmUp(): Promise<void> {
+    PhysicsWorld.ready ??= RAPIER.init();
+    await PhysicsWorld.ready;
+  }
+
   /** Rapier's WASM must be initialised once before any other call (later sessions reuse it). */
   static async create(): Promise<PhysicsWorld> {
     PhysicsWorld.ready ??= RAPIER.init();

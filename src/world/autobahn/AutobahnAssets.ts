@@ -23,6 +23,12 @@ export class AutobahnAssets {
   readonly trunk: THREE.MeshStandardMaterial;
   readonly conifer: THREE.MeshStandardMaterial;
   readonly broadleaf: THREE.MeshStandardMaterial;
+  readonly shrub: THREE.MeshStandardMaterial;
+  /** Landscape tiles: the terrain look, pushed behind the chunk ribbons where both overlap. */
+  readonly terrainFar: THREE.MeshStandardMaterial;
+  /** Simplified distant tree (crown only). */
+  readonly farTree: THREE.MeshStandardMaterial;
+  readonly farTreeGeo: THREE.ConeGeometry;
   readonly post: THREE.MeshStandardMaterial;
   readonly reflector: THREE.MeshStandardMaterial;
   readonly lamp: THREE.MeshStandardMaterial;
@@ -58,6 +64,14 @@ export class AutobahnAssets {
     this.trunk = own(new THREE.MeshStandardMaterial({ color: 0x4a3626, roughness: 1 }));
     this.conifer = own(new THREE.MeshStandardMaterial({ color: 0x23412a, roughness: 0.95 }));
     this.broadleaf = own(new THREE.MeshStandardMaterial({ color: 0x3d6a2e, roughness: 0.95 }));
+    this.shrub = own(new THREE.MeshStandardMaterial({ color: 0x3a5a26, roughness: 1 }));
+    this.terrainFar = own(this.terrain.clone());
+    this.terrainFar.polygonOffset = true;
+    this.terrainFar.polygonOffsetFactor = 2;
+    this.terrainFar.polygonOffsetUnits = 4;
+    this.farTree = own(new THREE.MeshStandardMaterial({ color: 0x2a4527, roughness: 1 }));
+    this.farTreeGeo = own(new THREE.ConeGeometry(1, 1, 5));
+    this.farTreeGeo.translate(0, 0.5, 0);
     this.post = own(new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.6 }));
     // Retro-reflectors: faint glow so they read at night (the headlights do the rest).
     this.reflector = own(new THREE.MeshStandardMaterial({ color: 0xffa230, emissive: 0xff8a10, emissiveIntensity: 0.9, roughness: 0.3 }));

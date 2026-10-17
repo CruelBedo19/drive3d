@@ -1,11 +1,10 @@
 import { SETUPS, applySetup, type SetupId } from './setups';
 import type { VehicleConfig, VehicleDefinition } from './vehicleTypes';
 import { fittedCar } from './vehicles/fittedCar';
-import { placeholderStreet } from './vehicles/placeholderStreet';
-import { testGltfCar } from './vehicles/testGltfCar';
 
 /**
- * Selectable cars (garage, car confirm, ?car=). Data only: a real car is one
+ * Selectable cars (garage, car confirm, ?car=). The test cars (placeholderStreet,
+ * testGltfCar) are not listed: they stay in config/vehicles/ for the headless tests only. Data only: a real car is one
  * entry here plus its VehicleDefinition file in config/vehicles/ (physics +
  * GLB path, wheel / light node mappings, hood camera). Not limited to three:
  * the garage shows whatever is listed.
@@ -54,28 +53,6 @@ export const CAR_REGISTRY: readonly CarEntry[] = [
   real('bmw_m4_f82', 'BMW', 'M4 (F82)', 2014, 0x2a5fb0, 'Galaxy Car Showroom · CC BY 4.0', 'Çift turbo sıralı altı coupé.'),
   real('amg_c63s_w205', 'Mercedes-AMG', 'C 63 S Coupé (W205)', 2017, 0x9a9a9a, 'GT Cars: Hyperspeed · CC BY 4.0', 'V8 biturbo coupé.', { headlights: true, brakeLights: true }),
   real('amg_one', 'Mercedes-AMG', 'ONE', 2022, 0xb8b8b8, '3dblender_1 · CC BY 4.0', 'F1 kökenli hibrit hiper otomobil.', { brakeLights: true }),
-  {
-    id: 'car_01',
-    aliases: ['placeholder'],
-    brand: 'Drive3D',
-    model: 'Test Car',
-    year: null,
-    definition: placeholderStreet,
-    defaultSetup: 'STREET',
-    placeholder: true,
-    description: 'Dengeli arkadan itişli test aracı. Handling ayarlarının referansı.',
-  },
-  {
-    id: 'car_02',
-    aliases: ['test-gltf'],
-    brand: 'Drive3D',
-    model: 'glTF Test Car',
-    year: null,
-    definition: testGltfCar,
-    defaultSetup: 'STREET',
-    placeholder: true,
-    description: 'GLB yükleme ve node eşleme hattının test modeli (aynı fizik).',
-  },
 ];
 
 export const DEFAULT_CAR_ID = 'bmw_m3_e92';

@@ -10,14 +10,20 @@
  *    lookup (and driving back reproduces the same road);
  *  - a feature timeline (tunnels, valley bridges, overpasses, exits, rest areas,
  *    environment zones, signs) that never overlaps;
- *  - terrain height: road-corridor carve + seeded noise hills, a hill mass over
- *    tunnels, a valley under bridges, flat pads under ramps and rest areas.
+ *  - terrain height: road-corridor carve + biome-weighted noise hills, a hill
+ *    mass over tunnels, a valley under bridges, flat pads under ramps and rest
+ *    areas; far from the road it blends into the free landscape (BiomeMap).
  *
  * Coordinates: x east, z south (as the rest of the game); heading h = vehicle
  * yaw (forward = (sin h, cos h), left = (cos h, -sin h)); lateral offset `off`
  * is positive to the left of the driving direction.
  */
+import { BIOMES } from '../../config/biomes';
 import { AUTOBAHN as A } from '../../config/tracks';
+import { BIOME_COUNT, BiomeMap } from './BiomeMap';
+import { fbm, hash2, ramp, ridged, smooth01 as smooth, valueNoise } from './noise';
+
+export { hash2 };
 
 export type Environment = 'forest' | 'open' | 'hilly';
 export type FeatureKind = 'tunnel' | 'bridge' | 'overpass' | 'exit' | 'restArea';
@@ -79,32 +85,6 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-/** Integer hash → [0, 1). */
-export function hash2(seed: number, x: number, y: number): number {
-  let h = (seed ^ Math.imul(x, 374761393) ^ Math.imul(y, 668265263)) >>> 0;
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
-
-function valueNoise(seed: number, x: number, z: number): number {
-  const xi = Math.floor(x);
-  const zi = Math.floor(z);
-  const fx = x - xi;
-  const fz = z - zi;
-  const u = fx * fx * (3 - 2 * fx);
-  const v = fz * fz * (3 - 2 * fz);
-  const a = hash2(seed, xi, zi);
-  const b = hash2(seed, xi + 1, zi);
-  const c = hash2(seed, xi, zi + 1);
-  const d = hash2(seed, xi + 1, zi + 1);
-  return (a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v) * 2 - 1;
-}
-
-const smooth = (t: number) => {
-  const c = t < 0 ? 0 : t > 1 ? 1 : t;
-  return c * c * (3 - 2 * c);
-};
-const ramp = (v: number, a: number, b: number) => smooth((v - a) / (b - a));
 const between = (r: () => number, range: readonly [number, number]) => range[0] + r() * (range[1] - range[0]);
 
 interface CurveSeg {
@@ -123,6 +103,8 @@ interface EnvZone {
 
 export class RoadGenerator {
   readonly seed: number;
+  /** Landscape regions around the road (same seed). */
+  readonly biome: BiomeMap;
   /**
    * One random stream per planner: each plan depends only on the seed, never on
    * the order or distance in which the others were extended (same seed → same
@@ -136,6 +118,8 @@ export class RoadGenerator {
   private gradeY = 0;
   private readonly curves: CurveSeg[] = [];
   private curveEnd = 0;
+  /** Planned heading after the last curve (sum of the curves' turns). */
+  private plannedHeading = 0;
   private readonly grades: GradeSeg[] = [];
   private gradeEnd = 0;
   private readonly envs: EnvZone[] = [];
@@ -154,6 +138,7 @@ export class RoadGenerator {
 
   constructor(seed: number) {
     this.seed = seed >>> 0;
+    this.biome = new BiomeMap(this.seed);
     this.rCurve = mulberry32(this.seed ^ 0x1b873593);
     this.rGrade = mulberry32(this.seed ^ 0xcc9e2d51);
     this.rEnv = mulberry32(this.seed ^ 0x85ebca6b);
@@ -201,8 +186,17 @@ export class RoadGenerator {
     const n = r() < 0.25 ? 2 : 1;
     let sign = r() < 0.5 ? 1 : -1;
     for (let i = 0; i < n; i++) {
-      const len = Math.max(between(r, p.curveLength), p.transition * 2.2);
-      this.curves.push({ s0: this.curveEnd, s1: this.curveEnd + len, k: sign / between(r, p.radius) });
+      let len = Math.max(between(r, p.curveLength), p.transition * 2.2);
+      const radius = between(r, p.radius);
+      // Keep the heading within ±(drift + turn) < 90° of the start direction: the road always
+      // makes progress the same way and can never loop back over itself (the landscape around
+      // it is then unambiguous). Random numbers are drawn the same way either way.
+      if (Math.abs(this.plannedHeading) > p.headingDrift) sign = -Math.sign(this.plannedHeading);
+      len = Math.min(len, p.maxTurn * radius + p.transition);
+      const k = sign / radius;
+      this.curves.push({ s0: this.curveEnd, s1: this.curveEnd + len, k });
+      // Smoothstep ramps in and out each turn half as much as their length at full curvature.
+      this.plannedHeading += k * (len - p.transition);
       this.curveEnd += len;
       sign = -sign;
     }
@@ -482,8 +476,11 @@ export class RoadGenerator {
 
   /**
    * Terrain height at road coordinate (s, off). Under the road it sits just
-   * below the surface (it shows only where the road is a bridge); it rises over
-   * tunnels, drops into valleys under bridges and is flat under ramps / rest areas.
+   * below the surface (it shows only where the road is a bridge); beside it the
+   * biome decides the hills (flat fields, rolling hills, rocky crests, valleys
+   * falling away); it rises over tunnels, drops into valleys under bridges and
+   * is flat under ramps / rest areas. The first 6 m beside the road stay flat:
+   * terrain never covers the road.
    */
   terrainHeight(s: number, off: number): number {
     const f = this.frame(s, this._f2);
@@ -493,12 +490,15 @@ export class RoadGenerator {
     const roadEdge = this.surfaceY(f, side * edge);
     const x = f.x + Math.cos(f.heading) * off;
     const z = f.z - Math.sin(f.heading) * off;
-    const env = this.environmentAt(s);
-    const amp = env.forest * 14 + env.open * 6 + env.hilly * 42;
+    const w = this.biomeWeights(s, off, x, z, this._bw);
+    const amp = BiomeMap.mix(w, 'nearAmp');
     const hills = valueNoise(this.seed, x / 420, z / 420) * 0.7 + valueNoise(this.seed + 7, x / 150, z / 150) * 0.3;
     let h: number;
     if (a < 0) h = this.surfaceY(f, off) - 0.4;
-    else h = roadEdge - 0.4 + hills * amp * ramp(a, 6, 120) - Math.min(a, 6) * 0.05;
+    else {
+      const rough = valueNoise(this.seed + 11, x / 55, z / 55) * BiomeMap.mix(w, 'detail') + (ridged(this.seed + 13, x / 320, z / 320) - 0.35) * BiomeMap.mix(w, 'ridge');
+      h = roadEdge - 0.4 + (hills * amp + rough * ramp(a, 25, 160)) * ramp(a, 6, 120) + BiomeMap.mix(w, 'sink') * ramp(a, 40, 420) - Math.min(a, 6) * 0.05;
+    }
 
     for (const ft of this.featuresIn(s, s, 600)) {
       if (ft.kind === 'bridge') {
@@ -508,8 +508,12 @@ export class RoadGenerator {
       } else if (ft.kind === 'tunnel') {
         const hill = A.features.tunnel.hill;
         if (a < 0) {
-          // Over the road only between the portals: a roof over the tube.
-          if (s >= ft.s0 && s <= ft.s1) h = f.y + hill;
+          // Over the road only between the portals: a roof over the tube, just above the portal's
+          // headwall at the portals and rising into the hill further in (no block standing over the opening).
+          if (s >= ft.s0 && s <= ft.s1) {
+            const H = A.features.tunnel.height;
+            h = f.y + H + 3 + (hill - H - 3) * ramp(Math.min(s - ft.s0, ft.s1 - s), 0, 90);
+          }
         } else {
           // A rolling hill: higher in the middle, uneven along and across, fading out sideways.
           const along = ramp(s, ft.s0 - 220, ft.s0 + 20) * (1 - ramp(s, ft.s1 - 20, ft.s1 + 220));
@@ -518,7 +522,7 @@ export class RoadGenerator {
           // Cut slopes beside the road (~42°), but tall enough over the tube between the portals.
           let limit = roadEdge + 1 + Math.max(0, a - 1) * 0.9;
           if (s >= ft.s0 && s <= ft.s1) limit = Math.max(limit, roadEdge + A.features.tunnel.height + 2);
-          h = Math.max(h, Math.min(roadEdge + hill * swell * along * across + hills * amp * 0.3, limit));
+          h = Math.max(h, Math.min(roadEdge + (hill * swell * across + hills * Math.max(amp, 14) * 0.3) * along, limit));
         }
       } else if (ft.kind === 'overpass' && a >= 4) {
         // Embankments carry the crossing road up to its deck on both sides.
@@ -536,6 +540,57 @@ export class RoadGenerator {
     }
     return h;
   }
+
+  /**
+   * Landscape height anywhere, given the point's road coordinate: the road
+   * corridor terrain within 500 m of the centre line, blending into the free
+   * landscape (biome hills, far mountain ranges) by 1.4 km.
+   */
+  worldHeight(s: number, off: number, x: number, z: number): number {
+    const t = ramp(Math.abs(off), A.world.blendNear, A.world.blendFar);
+    if (t >= 1) return this.farHeight(x, z, this.biome.weights(x, z, this._bw));
+    const near = this.terrainHeight(s, off);
+    if (t <= 0) return near;
+    return near + (this.farHeight(x, z, this._bw) - near) * t;
+  }
+
+  /** Free landscape height (no road): biome base level and hills, occasional mountain ranges. */
+  farHeight(x: number, z: number, w: Float32Array): number {
+    const base = BiomeMap.mix(w, 'farBase') + BiomeMap.mix(w, 'farAmp') * fbm(this.seed + 21, x / 2600, z / 2600, 4);
+    const range = ridged(this.seed + 23, x / 9000, z / 9000, 4) * A.world.mountains * ramp(fbm(this.seed + 25, x / 26000, z / 26000, 2), -0.15, 0.35);
+    return base + range + valueNoise(this.seed + 11, x / 55, z / 55) * BiomeMap.mix(w, 'detail');
+  }
+
+  /** Biome weights at a road coordinate (adds the rest areas' surroundings). */
+  biomeWeights(s: number, off: number, x: number, z: number, out: Float32Array): Float32Array {
+    return this.biome.weights(x, z, out, this.serviceWeight(s, off));
+  }
+
+  /** 0..1: near a rest area (mown grass, few trees around it). */
+  serviceWeight(s: number, off: number): number {
+    let w = 0;
+    for (const ft of this.featuresIn(s, s, 500)) {
+      if (ft.kind !== 'restArea') continue;
+      const d = Math.max(ft.s0 - s, s - ft.s1, 0);
+      w = Math.max(w, (1 - ramp(d, 0, 450)) * (1 - ramp(Math.abs(off), 250, 650)));
+    }
+    return w;
+  }
+
+  /** Strongest biome around road distance s (F2 / tests). */
+  biomeAt(s: number, off = 0): string {
+    const f = this.frame(s, this._f3);
+    const x = f.x + Math.cos(f.heading) * off;
+    const z = f.z - Math.sin(f.heading) * off;
+    return BIOMES[BiomeMap.dominant(this.biomeWeights(s, off, x, z, this._bw))].label;
+  }
+  private readonly _f3: Frame = { x: 0, y: 0, z: 0, heading: 0, curvature: 0, bank: 0 };
+  private readonly _bw = new Float32Array(BIOME_COUNT);
+  /** Biome weights of the last terrain / landscape query (scratch, overwritten by the next one). */
+  get weights(): Float32Array {
+    return this._bw;
+  }
+
   private readonly _f2: Frame = { x: 0, y: 0, z: 0, heading: 0, curvature: 0, bank: 0 };
 
   /** Ramp / platform surface near (s, off) for an exit or rest area, or null. */

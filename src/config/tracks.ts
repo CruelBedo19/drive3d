@@ -75,6 +75,10 @@ export const AUTOBAHN = {
     gradeLength: [700, 2200] as const,
     gradeTransition: 350,
     startStraight: 1400,
+    /** Curves always turn back towards the start direction once the heading has drifted this far (rad)… */
+    headingDrift: 0.45,
+    /** …and one curve turns at most this much: the heading stays within ±78°, so the road never loops. */
+    maxTurn: 0.9,
   },
   features: {
     tunnel: { every: [6000, 10000] as const, length: [300, 900] as const, height: 7.2, hill: 26 },
@@ -85,12 +89,45 @@ export const AUTOBAHN = {
     environment: { length: [3000, 6000] as const, blend: 400 },
   },
   /** Streaming: chunk length and how many are kept around the player. */
-  chunk: { length: 200, ahead: 8, behind: 3, cache: 6 },
-  /** Terrain ribbon: lateral columns beyond the road edge, along-road step. */
-  terrain: { offsets: [0, 3, 8, 16, 28, 46, 72, 110, 170, 260, 380, 520], step: 10, colliderBand: 70 },
-  trees: { spacing: 14, maxOffset: 300, seed: 77 },
+  chunk: { length: 200, ahead: 10, behind: 3, cache: 6 },
+  /**
+   * Road-aligned terrain ribbon of each chunk (detailed, with colliders): lateral columns beyond
+   * the road edge, along-road step. It reaches a little past `world.corridor`, where the free
+   * landscape tiles take over.
+   */
+  terrain: { offsets: [0, 3, 8, 16, 28, 46, 72, 98, 122, 136], step: 10, colliderBand: 70 },
+  /** Roadside trees of each chunk, up to the corridor edge (the landscape tiles plant the rest). */
+  trees: { spacing: 14, maxOffset: 140, seed: 77 },
+  /** Bushes near the road (instanced, culled at half the vegetation distance). */
+  shrubs: { spacing: 9, from: 4, to: 48 },
+  /**
+   * Endless landscape around the road. Corridor: half width (from the centre line) owned by the
+   * chunk ribbons; the landscape tiles sink under it. Heights blend from the road terrain to the
+   * free landscape between blendNear and blendFar (m from the centre line).
+   */
+  world: {
+    corridor: 140,
+    blendNear: 500,
+    blendFar: 1400,
+    mountains: 340,
+    /** Landscape tile LOD: tile size of level 0 (×2 per level), levels, grid segments per level. */
+    tile: 256,
+    levels: 4,
+    segments: [32, 32, 16, 16] as const,
+    /** Skirt depth per level (hides cracks between levels), m. */
+    skirt: [10, 20, 40, 80] as const,
+    /** Tile trees: jittered grid cell per level (only levels 0-1 carry trees). */
+    treeCell: [18, 30] as const,
+    /** Tiles kept parked after leaving the view (rebuilt from the cache when coming back). */
+    cache: 24,
+    /** Build time per frame, ms: road chunks and landscape tiles share the frame. */
+    roadBudget: 4,
+    worldBudget: 2.5,
+    /** Low-cost road strip drawn beyond the loaded chunks (no collision), m ahead / behind. */
+    farRoad: { ahead: 4200, behind: 2400, step: 25 },
+  },
   /** Lateral distance at which the car is brought back to the road. */
   boundary: 260,
   spawn: { s: 600, lane: 1 },
-  fog: { near: 300, far: 1600 },
+  fog: { near: 380, far: 2600 },
 } as const;

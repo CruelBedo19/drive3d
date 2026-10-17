@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { CHASE_CLOSE, CHASE_NORMAL, CameraRig, ChaseCamera, HoodCamera, type CameraTarget } from '../src/camera/CameraRig';
 import { updateCameraInput, type KeyReader } from '../src/camera/cameraInput';
 import { channelGains } from '../src/audio/AudioManager';
+import { testGltfCar } from '../src/config/vehicles/testGltfCar';
 import { CAR_REGISTRY, carRatings, carSpecs, findCar, getCar, validateRegistry, type CarEntry } from '../src/config/carRegistry';
 import { SETUP_IDS } from '../src/config/setups';
 import { TRACK_IDS } from '../src/config/tracks';
@@ -234,23 +235,24 @@ async function main(): Promise<void> {
   section('Garage / vehicle registry');
   {
     const errors = validateRegistry();
-    check('registry is valid (4 real cars + 2 test cars)', errors.length === 0 && CAR_REGISTRY.filter((c) => !c.placeholder).length === 4 && CAR_REGISTRY.length === 6, errors.join('; ') || CAR_REGISTRY.map((c) => c.id).join(', '));
+    check('registry is valid: the 4 real cars only (test cars removed from the game)', errors.length === 0 && CAR_REGISTRY.length === 4 && CAR_REGISTRY.every((c) => !c.placeholder), errors.join('; ') || CAR_REGISTRY.map((c) => c.id).join(', '));
     const broken: CarEntry[] = [
       { ...CAR_REGISTRY[1], id: 'x' },
       { ...CAR_REGISTRY[1], id: 'x', aliases: [], definition: { ...CAR_REGISTRY[1].definition, visual: { ...CAR_REGISTRY[1].definition.visual, model: { ...CAR_REGISTRY[1].definition.visual.model!, nodes: { ...CAR_REGISTRY[1].definition.visual.model!.nodes, wheelRR: '' } } } } },
     ];
     const brokenErrors = validateRegistry(broken);
     check('validation catches duplicate ids and missing wheel nodes', brokenErrors.some((e) => e.includes('duplicate')) && brokenErrors.some((e) => e.includes('wheelRR')), brokenErrors.join('; '));
-    check('ids and old aliases resolve; unknown → default', findCar('car_02')?.id === 'car_02' && findCar('test-gltf')?.id === 'car_02' && findCar('placeholder')?.id === 'car_01' && getCar('nope').id === 'bmw_m3_e92', 'aliases ok');
+    check('ids resolve; removed test cars and unknown ids → default car', findCar('amg_one')?.id === 'amg_one' && findCar('car_01') === undefined && getCar('car_02').id === 'bmw_m3_e92' && getCar('placeholder').id === 'bmw_m3_e92' && getCar('nope').id === 'bmw_m3_e92', 'ok');
     const storage = new MemoryStorage();
     const p = new ProfileStore(rules, storage as unknown as Storage);
     p.update({ carId: 'amg_one' });
     check('selected car persists', new ProfileStore(rules, storage as unknown as Storage).value.carId === 'amg_one', 'reloaded');
-    const s = carSpecs(getCar('car_01').definition.physics);
-    const r = carRatings(getCar('car_01'));
-    const rSport = carRatings(getCar('car_01'), 'SPORT');
-    check('specs and ratings derived from the config', s.powerKw === 250 && s.massKg === 1400 && s.drivetrain === 'RWD' && Math.abs(s.wheelbaseM - 2.65) < 1e-9 && rSport.acceleration > r.acceleration, `${s.powerPs} PS, ${s.torqueNm} Nm, ratings ${JSON.stringify(r)} / SPORT ${JSON.stringify(rSport)}`);
-    const def = getCar('car_02').definition;
+    const m3 = getCar('bmw_m3_e92');
+    const s = carSpecs(m3.definition.physics);
+    const r = carRatings(m3);
+    const rSport = carRatings(m3, 'SPORT');
+    check('specs and ratings derived from the config', s.powerKw === m3.definition.physics.engine.maxPowerKw && s.massKg === m3.definition.physics.chassis.mass && s.drivetrain === 'RWD' && Math.abs(s.wheelbaseM - (m3.definition.physics.front.z - m3.definition.physics.rear.z)) < 1e-9 && rSport.acceleration > r.acceleration, `${s.powerPs} PS, ${s.torqueNm} Nm, ratings ${JSON.stringify(r)} / SPORT ${JSON.stringify(rSport)}`);
+    const def = testGltfCar;
     const visual = new GltfCarVisual(def.physics, def.visual, () => Promise.reject(new Error('404 test')));
     const warn = console.warn;
     console.warn = () => {};

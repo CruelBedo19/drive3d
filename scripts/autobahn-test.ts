@@ -11,7 +11,11 @@ import { PhysicsWorld, RAPIER } from '../src/core/PhysicsWorld';
 import { AutobahnTrack } from '../src/world/autobahn/AutobahnTrack';
 import { RoadGenerator, SECTION, rampLayout } from '../src/world/autobahn/RoadGenerator';
 import { VehiclePhysics } from '../src/vehicle/physics/VehiclePhysics';
+import { assignDeep } from '../src/admin/configPath';
+import { autobahnSpeedPatch } from '../src/config/autobahnTune';
+import { applySetup } from '../src/config/setups';
 import { check, finish, makeSim, section, upY, type Sim } from './lib/sim';
+import { TestDriver, makeTrafficSim } from './lib/trafficHarness';
 
 const LONG = process.argv.includes('--long');
 const signature = (g: RoadGenerator, until: number) => {
@@ -123,6 +127,11 @@ async function main(): Promise<void> {
     const r2 = track.safeRespawn(new THREE.Vector3(near.x, near.y, near.z));
     const r2s = g.nearestS(r2.position.x, r2.position.z, 5200);
     check('respawn: nearest road spot, right lane and direction for each side', Math.abs(r1s - 3000) < 5 && Math.abs(g.lateralOffset(r1.position.x, r1.position.z, r1s) - SECTION.laneB[1]) < 0.1 && Math.cos(r1.yaw - g.frame(r1s).heading) < -0.99 && Math.abs(g.lateralOffset(r2.position.x, r2.position.z, r2s) - SECTION.lanesA[1]) < 0.1 && Math.cos(r2.yaw - g.frame(r2s).heading) > 0.99, `B side → lane ${g.lateralOffset(r1.position.x, r1.position.z, r1s).toFixed(2)} reversed, A side → lane ${g.lateralOffset(r2.position.x, r2.position.z, r2s).toFixed(2)}`);
+    {
+      const onLane = g.toWorld(3000, SECTION.lanesA[2]);
+      const inField = g.toWorld(3000, -(SECTION.edge + 25));
+      check('R: on the road recovers in place, off the road goes back to the road', track.onRoad(new THREE.Vector3(onLane.x, onLane.y, onLane.z)) && !track.onRoad(new THREE.Vector3(inField.x, g.terrainHeight(3000, -(SECTION.edge + 25)), inField.z)), 'onRoad lane / field');
+    }
     check('out of bounds far from the road', track.outOfBounds(new THREE.Vector3(far.x + 400 * Math.cos(g.frame(3000).heading), far.y, far.z)) && !track.outOfBounds(track.spawn.position), 'boundary works');
     const t = g.features.find((f) => f.kind === 'tunnel')!;
     const inT = g.toWorld((t.s0 + t.s1) / 2, -8);
@@ -203,6 +212,23 @@ async function main(): Promise<void> {
       s.track?.dispose();
       s.physics.dispose();
     }
+  }
+  section('Autobahn high-speed pack (Autobahn only)');
+  {
+    const s = await makeTrafficSim('off');
+    const base = structuredClone(s.vehicle.config);
+    assignDeep(s.vehicle.config, applySetup(base, autobahnSpeedPatch(base)));
+    s.vehicle.refreshConfig();
+    const d = new TestDriver(s, 1, 450, false);
+    let best = 0;
+    let t200 = 0;
+    for (let i = 0; i < 120 * 240; i++) {
+      d.step(s);
+      const v = s.vehicle.physics.forwardSpeed * 3.6;
+      if (!t200 && v >= 200) t200 = i / 120;
+      best = Math.max(best, v);
+    }
+    check('top speed ~340 km/h on the Autobahn (was ~250)', best > 330 && best < 350, `vmax ${best.toFixed(1)} km/h, 0-200 in ${t200.toFixed(1)} s, limiter ${s.vehicle.config.maxSpeedKmh} km/h`);
   }
   finish();
 }

@@ -64,6 +64,11 @@ export class Hud {
     this.minimap.setData(data);
   }
 
+  /** AI traffic as minimap dots (count 0 hides them). */
+  setTraffic(xz: Float32Array, flags: Uint8Array, count: number): void {
+    this.minimap.setTraffic(xz, flags, count);
+  }
+
   /** Controls hint (shown for a few seconds after loading), built from the current bindings. */
   setHelp(text: string): void {
     this.helpEl.textContent = text;

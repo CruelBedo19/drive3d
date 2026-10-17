@@ -278,14 +278,23 @@ export class LoadingScreen extends Screen {
         <h1 class="loading-map"></h1>
         <p class="loading-car"></p>
         <div class="spinner" aria-hidden="true"></div>
+        <div class="loading-bar" hidden><span></span></div>
         <p class="loading-stage" role="status"></p>
       </div>`;
+  }
+
+  /** Progress bar 0..1 with a line of text (null hides the bar: steps without a measurable %). */
+  progress(fraction: number | null, text = ''): void {
+    const bar = this.q('.loading-bar');
+    bar.hidden = fraction === null;
+    if (fraction !== null) (bar.firstElementChild as HTMLElement).style.width = `${Math.round(fraction * 100)}%`;
+    this.stage(text);
   }
 
   set(map: string, car: string): void {
     this.q('.loading-map').textContent = map;
     this.q('.loading-car').textContent = car;
-    this.stage('');
+    this.progress(null);
   }
 
   /** What is being prepared right now (there is no measurable % for track generation). */

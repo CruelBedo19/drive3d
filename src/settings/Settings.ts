@@ -13,6 +13,9 @@ export type RenderDistance = 'short' | 'medium' | 'far';
 export type VegetationDistance = 'low' | 'medium' | 'high';
 export type WeatherQuality = 'low' | 'medium' | 'high';
 export type HeadlightModeSetting = 'manual' | 'auto';
+export type TrafficDensitySetting = 'off' | 'low' | 'medium' | 'high' | 'veryHigh';
+export type TrafficVarietySetting = 'mixed' | 'carsOnly' | 'heavy';
+export type TrafficCutInSetting = 'off' | 'some' | 'many';
 
 export interface UiSettings {
   hud: boolean;
@@ -63,12 +66,24 @@ export interface ControlSettings {
   recover: string;
   respawn: string;
   headlights: string;
+  trafficDensity: string;
+}
+
+/** AI traffic (worlds that have it: the Autobahn). */
+export interface TrafficSettings {
+  density: TrafficDensitySetting;
+  variety: TrafficVarietySetting;
+  /** Bold drivers who cut in close in front of the player. */
+  cutIns: TrafficCutInSetting;
+  /** Traffic as dots on the minimap. */
+  minimapDots: boolean;
 }
 
 export interface GameSettings {
   ui: UiSettings;
   audio: AudioSettings;
   graphics: GraphicsSettings;
+  traffic: TrafficSettings;
   controls: ControlSettings;
 }
 
@@ -91,6 +106,7 @@ export const SETTING_SECTIONS: readonly { id: SettingsSection; label: string }[]
   { id: 'ui', label: 'Arayüz' },
   { id: 'audio', label: 'Ses' },
   { id: 'graphics', label: 'Grafik' },
+  { id: 'traffic', label: 'Trafik' },
   { id: 'controls', label: 'Kontroller' },
 ];
 
@@ -226,6 +242,49 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
   },
   { section: 'graphics', key: 'antialias', label: 'Kenar yumuşatma', hint: 'Yeniden başlatma gerekir', type: 'toggle', default: true },
 
+  // --- Trafik ----------------------------------------------------------------------
+  {
+    section: 'traffic',
+    key: 'density',
+    label: 'Trafik yoğunluğu',
+    hint: 'Autobahn haritasında; sürerken T ile de değişir',
+    type: 'select',
+    default: 'medium',
+    options: [
+      { value: 'off', label: 'Kapalı' },
+      { value: 'low', label: 'Düşük' },
+      { value: 'medium', label: 'Orta' },
+      { value: 'high', label: 'Yüksek' },
+      { value: 'veryHigh', label: 'Çok yüksek' },
+    ],
+  },
+  {
+    section: 'traffic',
+    key: 'variety',
+    label: 'Trafik çeşitliliği',
+    type: 'select',
+    default: 'mixed',
+    options: [
+      { value: 'mixed', label: 'Karışık' },
+      { value: 'carsOnly', label: 'Çoğunlukla otomobil' },
+      { value: 'heavy', label: 'Yoğun ağır vasıta' },
+    ],
+  },
+  {
+    section: 'traffic',
+    key: 'cutIns',
+    label: 'Önüne kıran sürücüler',
+    hint: 'Bazı NPC\'ler yakın mesafeden önüne geçebilir',
+    type: 'select',
+    default: 'some',
+    options: [
+      { value: 'off', label: 'Yok' },
+      { value: 'some', label: 'Ara sıra' },
+      { value: 'many', label: 'Sık' },
+    ],
+  },
+  { section: 'traffic', key: 'minimapDots', label: 'Trafiği haritada göster', type: 'toggle', default: true },
+
   // --- Kontroller ---------------------------------------------------------------
   { section: 'controls', key: 'throttle', label: 'Gaz', type: 'key', default: 'KeyW' },
   { section: 'controls', key: 'brake', label: 'Fren / geri', type: 'key', default: 'KeyS' },
@@ -234,9 +293,10 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
   { section: 'controls', key: 'handbrake', label: 'El freni', type: 'key', default: 'Space' },
   { section: 'controls', key: 'camera', label: 'Kamera değiştir', type: 'key', default: 'KeyV' },
   { section: 'controls', key: 'lookBack', label: 'Arkaya bak (basılı tut)', type: 'key', default: 'KeyC' },
-  { section: 'controls', key: 'recover', label: 'Aracı düzelt', type: 'key', default: 'KeyR' },
+  { section: 'controls', key: 'recover', label: 'Aracı düzelt', hint: 'Autobahn: yoldan çıktıysan en yakın şeride döner', type: 'key', default: 'KeyR' },
   { section: 'controls', key: 'respawn', label: 'Başa dön (respawn)', type: 'key', default: 'Shift+KeyR' },
   { section: 'controls', key: 'headlights', label: 'Far aç / kapat', type: 'key', default: 'KeyL' },
+  { section: 'controls', key: 'trafficDensity', label: 'Trafik yoğunluğu (sırayla)', type: 'key', default: 'KeyT' },
 ];
 
 /** Keys the game keeps for itself (menus, developer tools): not bindable. */
@@ -255,7 +315,7 @@ export function isBindableKey(binding: string): boolean {
 }
 
 export function defaultSettings(): GameSettings {
-  const out: Record<string, Record<string, unknown>> = { ui: {}, audio: {}, graphics: {}, controls: {} };
+  const out: Record<string, Record<string, unknown>> = { ui: {}, audio: {}, graphics: {}, traffic: {}, controls: {} };
   for (const f of SETTINGS_SCHEMA) out[f.section][f.key] = f.default;
   return out as unknown as GameSettings;
 }

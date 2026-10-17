@@ -1,4 +1,5 @@
 import type * as THREE from 'three';
+import type { TrafficLaneNetwork } from '../traffic/TrafficLaneNetwork';
 import type { MapDataProvider } from '../ui/map/MapData';
 
 /** What a track may use each frame to cull detail. */
@@ -6,6 +7,11 @@ export interface TrackView {
   camera: THREE.Vector3;
   /** Trees and other decoration farther than this (m) may be hidden. */
   vegetationDistance: number;
+  /** Current fog colour and weather visibility (1 = clear): distant scenery tints itself with them. */
+  fogColor?: THREE.Color;
+  visibility?: number;
+  /** Camera far plane, m (nothing beyond it is drawn). */
+  cameraFar?: number;
 }
 
 export interface SpawnPoint {
@@ -45,6 +51,8 @@ export interface Track extends MapDataProvider {
   stream?(position: THREE.Vector3, immediate?: boolean): void;
   /** Nearest safe place to put the car back (else the spawn point). */
   safeRespawn?(near: THREE.Vector3): SpawnPoint;
+  /** Is this point on the road surface (lanes, shoulders, verge)? R then recovers in place, else back onto the road. */
+  onRoad?(position: THREE.Vector3): boolean;
   /** Too far from the playable area: the car is brought back. */
   outOfBounds?(position: THREE.Vector3): boolean;
   /** 0..1 roof over this point (tunnels): no rain, darker ambient light. */
@@ -56,5 +64,7 @@ export interface Track extends MapDataProvider {
   /** Rebuild the world from another seed (procedural tracks, F2). */
   regenerate?(seed: number): void;
   readonly seed?: number;
+  /** Traffic lanes (worlds with AI traffic). */
+  readonly laneNetwork?: TrafficLaneNetwork;
   dispose(): void;
 }

@@ -1,0 +1,52 @@
+{
+  "taxi": {
+    "length": 5.085,
+    "width": 1.999,
+    "height": 1.504
+  },
+  "police": {
+    "length": 5.172,
+    "width": 1.999,
+    "height": 1.878
+  },
+  "postvan": {
+    "length": 5.347,
+    "width": 2.186,
+    "height": 1.978
+  },
+  "ambulance": {
+    "length": 6.9,
+    "width": 2.59,
+    "height": 2.574
+  },
+  "citybus": {
+    "length": 9.951,
+    "width": 2.535,
+    "height": 2.516
+  },
+  "schoolbus": {
+    "length": 7.921,
+    "width": 2.552,
+    "height": 2.67
+  },
+  "garbagetruck": {
+    "length": 7.656,
+    "width": 2.62,
+    "height": 2.831
+  },
+  "servicetruck": {
+    "length": 5.323,
+    "width": 2.268,
+    "height": 2.194
+  },
+  "towtruck": {
+    "length": 6.942,
+    "width": 2.376,
+    "height": 2.394
+  },
+  "firetruck": {
+    "length": 8.355,
+    "width": 2.59,
+    "height": 2.933
+  }
+}

@@ -1,4 +1,5 @@
 import { AudioManager } from '../audio/AudioManager';
+import { preloadAssets } from './AssetPreloader';
 import { CAR_REGISTRY, getCar } from '../config/carRegistry';
 import { SETUP_IDS, isSetupId, type SetupId } from '../config/setups';
 import { DEFAULT_TRACK, TRACK_IDS, isTrackId, type TrackId } from '../config/tracks';
@@ -144,6 +145,21 @@ export class App {
 
   start(): void {
     this.rafId = requestAnimationFrame(this.frame);
+    void this.boot();
+  }
+
+  /** Site opened: fetch every model first (with a progress bar), then the menus (or the direct drive). */
+  private async boot(): Promise<void> {
+    this.loading.set('Drive3D', 'Oyun dosyaları yükleniyor');
+    this.loading.show();
+    try {
+      await preloadAssets((p) => this.loading.progress(p.fraction, p.totalMB > 0 ? `${p.label} · ${p.loadedMB.toFixed(1)} / ${p.totalMB.toFixed(1)} MB` : p.label));
+    } catch (err) {
+      // Not fatal: models then load on demand, as without the preloader.
+      console.warn('Preloading failed', err);
+    }
+    if (this.disposed) return;
+    this.loading.progress(null);
     const direct = this.options.direct;
     if (direct) {
       this.sessionOverride = { trackId: direct.track, carId: direct.car, setup: direct.setup };

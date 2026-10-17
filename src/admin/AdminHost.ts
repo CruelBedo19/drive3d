@@ -3,6 +3,7 @@ import type { VehicleConfig } from '../config/vehicleTypes';
 import type { Vehicle } from '../vehicle/Vehicle';
 import type { TestPoint } from '../world/Track';
 import type { WeatherManager } from '../world/weather/WeatherManager';
+import type { TrafficDebugFlags } from '../traffic/TrafficDebugView';
 import type { Measurements } from './Measurements';
 
 /** What the admin panel may do to the running game. Implemented by Game. */
@@ -30,4 +31,8 @@ export interface AdminHost {
   /** Procedural track numbers (null for static maps). */
   trackDebug?(): Record<string, string | number> | null;
   regenerateTrack?(seed: number): void;
+  /** AI traffic numbers and debug drawing (worlds with traffic). */
+  trafficDebug?(): { stats: Record<string, string | number>; selected: Record<string, string | number> | null } | null;
+  trafficSelectNext?(): void;
+  readonly trafficFlags?: TrafficDebugFlags | null;
 }

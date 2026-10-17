@@ -30,6 +30,15 @@ wheels regrouped / split, textures resized and converted to WebP by
 - **Mercedes-AMG C 63 Coupe S (W205)** by GT Cars: Hyperspeed — https://sketchfab.com/3d-models/mercedes-amg-c-63-coupe-s-w205-c8f54d07a4ca451ebc4a15f27a4230c3
 - **Mercedes AMG One** by 3dblender_1 — https://sketchfab.com/3d-models/mercedes-amg-one-77b02e5a555d4819b490f67eeb348d22
 
+Traffic vehicles (taxi, police car, postal van, ambulance, city bus, school bus, garbage truck,
+road service truck, tow truck, fire truck):
+
+- **Generic civil service vehicles pack** by Comrade1280 — CC BY 4.0 —
+  https://sketchfab.com/3d-models/generic-civil-service-vehicles-pack-8ff2a13f30914932a70c7950cfa58465
+  The files in `public/assets/traffic/` are modified versions (split into one model per vehicle,
+  reoriented, centred, meshes merged per material, textures resized and converted to WebP by
+  `scripts/prepare-traffic.ts`); the original is in `assets-src/vehicles/`.
+
 Brand names and car designs belong to their owners; the models are fan-made
 and not affiliated with or endorsed by BMW or Mercedes-AMG.
 
@@ -75,6 +84,30 @@ Ideas only, no code. Neither repository has a licence file, so nothing was copie
 
 Signs use fictitious destinations; the styling follows the public German road-sign conventions (blue motorway
 panels, round speed signs).
+
+## Infinite Autobahn world references
+
+- **Procedural Terrains** by ZyFou — MIT License (https://github.com/jorgefsb/proceduralterrains,
+  commit 3289c4b). Approach followed, own TypeScript code (no code copied; the licence text is kept in
+  `third_party/procedural-terrains/LICENSE`):
+  - several slow "climate" noise fields turned into soft, overlapping biome weights (`climateAt` /
+    `biomeWeightsAt`) → `src/world/autobahn/BiomeMap.ts`
+  - ridged fractal noise where each octave is weighted by the previous one (`ridgedFBM`) →
+    `src/world/autobahn/noise.ts`
+  - terrain chunks in LOD rings around the camera, skirts to hide level seams, a radial,
+    time-budgeted build queue (`InfiniteWorld`, `ChunkStreamScheduler`, `buildChunkGeometry`) →
+    `src/world/autobahn/TerrainTiles.ts`
+- **nightdrive** by StarKnightt (no licence, ideas only, commit 9b918ae): nested terrain rings around the
+  camera coordinated with a road corridor, distant ranges masked away from the road, vegetation kept off
+  the corridor → `TerrainTiles.ts`, `TerrainField.ts`, `DistantScenery.ts`.
+
+## Traffic models
+
+- Car following: the **Intelligent Driver Model** (M. Treiber, A. Hennecke, D. Helbing, "Congested traffic
+  states in empirical observations and microscopic simulations", Phys. Rev. E 62, 2000).
+- Lane changes: safety / incentive checks in the spirit of **MOBIL** (A. Kesting, M. Treiber, D. Helbing,
+  "General lane-changing model MOBIL for car-following models", Transportation Research Record 1999, 2007).
+- Own implementation in `src/traffic/`; traffic vehicles are simple procedural models (no third-party assets).
 
 ## Libraries
 

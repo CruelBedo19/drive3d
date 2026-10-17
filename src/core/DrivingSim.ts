@@ -6,6 +6,14 @@ import { VehiclePhysics } from '../vehicle/physics/VehiclePhysics';
 import type { Track } from '../world/Track';
 import { type PhysicsWorld, RAPIER } from './PhysicsWorld';
 
+/** Something that steps with the physics (AI traffic): before and after each world step. */
+export interface SimSystem {
+  beforeStep(dt: number): void;
+  afterStep(dt: number): void;
+  /** The car was put somewhere new (spawn, respawn, teleport). */
+  onTeleport?(): void;
+}
+
 /**
  * The simulation part of a driving session, with no rendering or DOM: fixed
  * 120 Hz steps from an accumulator, driver input read only while stepping, and
@@ -20,6 +28,8 @@ export class DrivingSim {
   /** Called after each physics step (admin measurements). */
   onStep: ((dt: number) => void) | null = null;
   stepsThisFrame = 0;
+  /** Extra systems stepped with the physics, in order. */
+  readonly systems: SimSystem[] = [];
 
   private accumulator = 0;
   private stepRequested = false;
@@ -63,8 +73,10 @@ export class DrivingSim {
     while (this.accumulator >= fixedDt && steps < GAME_CONFIG.physics.maxStepsPerFrame) {
       this.driving.update(fixedDt);
       this.vehicle.fixedUpdate(fixedDt, this.driving.controls);
+      for (const s of this.systems) s.beforeStep(fixedDt);
       this.physics.step();
       this.vehicle.postPhysics();
+      for (const s of this.systems) s.afterStep(fixedDt);
       this.onStep?.(fixedDt);
       this.accumulator -= fixedDt;
       steps++;
@@ -114,6 +126,7 @@ export class DrivingSim {
     }
     this._pos.copy(ground).setY(ground.y + VehiclePhysics.restHeight(this.vehicle.config) + 0.05);
     this.place(this._pos, yaw);
+    for (const s of this.systems) s.onTeleport?.();
   }
 
   /** Clears any held driver input (entering pause / menus). */

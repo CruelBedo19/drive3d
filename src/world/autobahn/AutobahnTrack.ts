@@ -6,7 +6,11 @@ import type { SpawnPoint, TestPoint, Track, TrackView } from '../Track';
 import { applyWetness } from '../weather/wetSurface';
 import { AutobahnAssets } from './AutobahnAssets';
 import { ChunkBuilder, type ChunkBuild } from './ChunkBuilder';
+import { DistantScenery } from './DistantScenery';
+import { TerrainTiles } from './TerrainTiles';
 import { RoadGenerator, SECTION, rampLayout } from './RoadGenerator';
+import { TerrainField } from './TerrainField';
+import { TrafficLaneNetwork } from '../../traffic/TrafficLaneNetwork';
 
 export type ChunkState = 'active' | 'cached';
 
@@ -17,8 +21,7 @@ interface Chunk {
   colliders: number;
 }
 
-/** Milliseconds of chunk building allowed per frame for chunks that are not needed yet. */
-const BUILD_BUDGET_MS = 6;
+const FOG_COLOR = new THREE.Color(0xb4c9de);
 
 /**
  * Procedural, streamed German Autobahn (3 + 3 lanes): an endless road generated
@@ -28,6 +31,11 @@ const BUILD_BUDGET_MS = 6;
  * drawn) and then disposed, so long drives keep memory, meshes and colliders
  * flat. Same seed → same road, so the minimap, spawn, tests and bug reports are
  * reproducible.
+ *
+ * Around the road: an endless landscape (TerrainTiles, LOD rings around the
+ * camera, biome terrain, trees, buildings) and horizon silhouettes plus a far
+ * road strip (DistantScenery). Road chunks and landscape share the frame's
+ * build budget (AUTOBAHN.world.roadBudget / worldBudget).
  */
 export class AutobahnTrack implements Track {
   readonly group = new THREE.Group();
@@ -36,9 +44,18 @@ export class AutobahnTrack implements Track {
   readonly killHeight = -400;
   readonly fog = A.fog;
   gen: RoadGenerator;
+  /** Authoritative AI lanes, from the same generator. */
+  laneNetwork!: TrafficLaneNetwork;
   private readonly world: RAPIER.World;
   private readonly assets = new AutobahnAssets();
   private builder: ChunkBuilder;
+  private field!: TerrainField;
+  private tiles!: TerrainTiles;
+  private scenery!: DistantScenery;
+  /** Build time spent this frame on road chunks / landscape tiles, ms (F2). */
+  roadMs = 0;
+  worldMs = 0;
+  private vegetationDistance = 450;
   private readonly chunks = new Map<number, Chunk>();
   /** Road distance of the player (last stream position). */
   private sNear: number;
@@ -53,11 +70,20 @@ export class AutobahnTrack implements Track {
     this.world = world;
     this.group.name = 'autobahn';
     this.gen = new RoadGenerator(seed);
-    this.builder = new ChunkBuilder(this.gen, this.assets);
+    this.laneNetwork = new TrafficLaneNetwork(this.gen);
+    this.field = new TerrainField(this.gen);
+    this.builder = new ChunkBuilder(this.gen, this.field, this.assets);
+    this.makeWorld();
     this.sNear = A.spawn.s;
     this.spawn = this.makeSpawn();
     this.testPoints = this.makeTestPoints();
     this.stream(this.spawn.position, true);
+  }
+
+  private makeWorld(): void {
+    this.tiles = new TerrainTiles(this.field, this.assets);
+    this.scenery = new DistantScenery(this.gen, this.field, this.assets);
+    this.group.add(this.tiles.group, this.scenery.group);
   }
 
   get seed(): number {
@@ -89,6 +115,8 @@ export class AutobahnTrack implements Track {
    */
   stream(position: THREE.Vector3, immediate = false): void {
     this.sNear = immediate ? this.gen.nearestSGlobal(position.x, position.z) : this.gen.nearestS(position.x, position.z, this.sNear, 120);
+    // The landscape projects points kilometres ahead onto the road: keep the plan ahead of it.
+    this.gen.ensure(this.sNear + A.world.tile * 2 ** A.world.levels * 1.6);
     const L = A.chunk.length;
     const ci = Math.floor(this.sNear / L);
     const first = Math.max(0, ci - A.chunk.behind);
@@ -120,7 +148,7 @@ export class AutobahnTrack implements Track {
         continue;
       }
       const urgent = immediate || Math.abs(i - ci) <= 1;
-      if (!urgent && performance.now() - t0 > BUILD_BUDGET_MS) continue;
+      if (!urgent && performance.now() - t0 > A.world.roadBudget) continue;
       const build = this.builder.build(i);
       this.builtCount++;
       const chunk: Chunk = { build, state: 'cached', body: null, colliders: 0 };
@@ -128,17 +156,36 @@ export class AutobahnTrack implements Track {
       this.activate(chunk);
       changed = true;
     }
+    this.roadMs += performance.now() - t0;
     if (changed) this.revision++;
+    if (immediate) {
+      // Spawn / teleport: the landscape around the new spot at once.
+      const tw = performance.now();
+      this.tiles.update(position, Infinity, this.vegetationDistance * 3);
+      this.scenery.update(position, this.sNear, FOG_COLOR, 1, A.fog.far * 1.2);
+      this.worldMs += performance.now() - tw;
+    }
   }
 
   update(view?: TrackView): void {
     if (!view) return;
+    this.roadMs = 0;
+    this.worldMs = 0;
+    this.vegetationDistance = view.vegetationDistance;
     this.stream(view.camera);
+    const tw = performance.now();
+    const far = view.cameraFar ?? A.fog.far * 1.2;
+    // Landscape trees reach further than the roadside ones: they stand in stands, not rows.
+    this.tiles.update(view.camera, A.world.worldBudget, view.vegetationDistance * 3, far * 1.1);
+    this.scenery.update(view.camera, this.sNear, view.fogColor ?? FOG_COLOR, view.visibility ?? 1, far);
+    this.worldMs += performance.now() - tw;
     for (const c of this.chunks.values()) {
       if (c.state !== 'active') continue;
       const d = c.build.group.position.distanceTo(view.camera) - A.chunk.length;
       const visible = d < view.vegetationDistance;
       for (const m of c.build.vegetation) m.visible = visible;
+      const bushes = d < view.vegetationDistance * 0.5;
+      for (const m of c.build.shrubs) m.visible = bushes;
     }
   }
 
@@ -159,6 +206,14 @@ export class AutobahnTrack implements Track {
     const p = this.gen.toWorld(s, lane);
     this.stream(new THREE.Vector3(p.x, p.y, p.z));
     return { position: new THREE.Vector3(p.x, p.y, p.z), yaw: off > 0 ? f.heading + Math.PI : f.heading };
+  }
+
+  /** On the carriageways, shoulders or verge (ramps and rest areas count as off the main road). */
+  onRoad(pos: THREE.Vector3): boolean {
+    const s = this.locate(pos);
+    const off = this.gen.lateralOffset(pos.x, pos.z, s);
+    const f = this.gen.frame(s);
+    return Math.abs(off) <= SECTION.edge + 0.5 && Math.abs(pos.y - f.y) < 8;
   }
 
   /** Too far from the road (the world is only built along it). */
@@ -196,6 +251,7 @@ export class AutobahnTrack implements Track {
   /** Live numbers for F2. */
   debugInfo(): Record<string, string | number> {
     const f = this.gen.frame(this.sNear);
+    const ts = this.tiles.stats();
     let active = 0;
     let cached = 0;
     let meshes = 0;
@@ -219,11 +275,28 @@ export class AutobahnTrack implements Track {
       'Yükseklik (m)': f.y.toFixed(1),
       'Eğim (%)': (this.gen.gradeAt(this.sNear) * 100).toFixed(1),
       'Banking (°)': ((Math.atan(f.bank) * 180) / Math.PI).toFixed(2),
-      Ortam: this.gen.dominantEnvironment(this.sNear),
+      Biyom: this.gen.biomeAt(this.sNear, SECTION.edge + 80),
       'Mesh / instance': `${meshes} / ${instances}`,
       'Collider (aktif)': colliders,
       'Toplam üretilen chunk': this.builtCount,
+      'Arazi tile (L0/L1/L2/L3)': ts.visible.join(' / '),
+      'Arazi tile üretilen / önbellek / kuyruk': `${ts.built} / ${ts.cached} / ${ts.queued}`,
+      'Bitki instance (tile)': ts.vegetation,
+      'Bina (tile)': ts.buildings,
+      'Uzak manzara obje': this.scenery.objectCount,
+      'Üretim ms (yol / dünya)': `${this.roadMs.toFixed(2)} / ${this.worldMs.toFixed(2)}`,
+      'Tile üretim ms (ort.)': ts.buildMs.toFixed(2),
     };
+  }
+
+  /** Landscape tile numbers (tests / F2). */
+  worldStats() {
+    return this.tiles.stats();
+  }
+
+  /** The landscape tiles (tests). */
+  get landscape(): TerrainTiles {
+    return this.tiles;
   }
 
   /** Counts for tests: active / cached chunks, colliders and meshes. */
@@ -247,8 +320,13 @@ export class AutobahnTrack implements Track {
   regenerate(seed: number): void {
     for (const c of this.chunks.values()) this.disposeChunk(c);
     this.chunks.clear();
+    this.tiles.dispose();
+    this.scenery.dispose();
     this.gen = new RoadGenerator(seed);
-    this.builder = new ChunkBuilder(this.gen, this.assets);
+    this.laneNetwork = new TrafficLaneNetwork(this.gen);
+    this.field = new TerrainField(this.gen);
+    this.builder = new ChunkBuilder(this.gen, this.field, this.assets);
+    this.makeWorld();
     this.sNear = A.spawn.s;
     this.spawn = this.makeSpawn();
     this.testPoints = this.makeTestPoints();
@@ -260,6 +338,8 @@ export class AutobahnTrack implements Track {
   dispose(): void {
     for (const c of this.chunks.values()) this.disposeChunk(c);
     this.chunks.clear();
+    this.tiles.dispose();
+    this.scenery.dispose();
     this.assets.dispose();
     this.group.removeFromParent();
   }

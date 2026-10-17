@@ -7,6 +7,7 @@ import { TelemetryGraph } from './TelemetryGraph';
 import { TUNING_GROUPS, type TuningParam } from './tuningSchema';
 import { TuningStore } from './TuningStore';
 import { MapAdminPane } from './MapAdminPane';
+import { TrafficAdminPane } from './TrafficAdminPane';
 import { WeatherAdminPane } from './WeatherAdminPane';
 
 interface ParamRow {
@@ -45,6 +46,7 @@ export class AdminPanel {
   private tab: 'tune' | 'test' | 'world' = 'tune';
   private weatherPane: WeatherAdminPane | null = null;
   private mapPane: MapAdminPane | null = null;
+  private trafficPane: TrafficAdminPane | null = null;
   private open = false;
   private uiTimer = 0;
   private base: VehicleConfig;
@@ -121,6 +123,13 @@ export class AdminPanel {
         this.q('[data-pane="world"]').appendChild(pane.root);
       }
     }
+    if (host.trafficDebug && host.trafficSelectNext) {
+      const pane = new TrafficAdminPane({ trafficDebug: () => host.trafficDebug?.() ?? null, trafficSelectNext: () => host.trafficSelectNext?.(), get trafficFlags() { return host.trafficFlags ?? null; } });
+      if (pane.available) {
+        this.trafficPane = pane;
+        this.q('[data-pane="world"]').appendChild(pane.root);
+      }
+    }
     if (host.weather) {
       this.weatherPane = new WeatherAdminPane(host.weather);
       this.q('[data-pane="world"]').appendChild(this.weatherPane.root);
@@ -192,6 +201,7 @@ export class AdminPanel {
     } else if (this.tab === 'world') {
       this.weatherPane?.sync();
       this.mapPane?.sync();
+      this.trafficPane?.sync();
     }
   }
 

@@ -15,7 +15,10 @@
 import * as THREE from 'three';
 import { AUTOBAHN as A } from '../../config/tracks';
 import type { AutobahnAssets } from './AutobahnAssets';
+import { BIOME_COUNT, BiomeMap } from './BiomeMap';
+import { valueNoise } from './noise';
 import { hash2, rampLayout, SECTION, type Feature, type Frame, type RoadGenerator, type SignPlacement } from './RoadGenerator';
+import type { TerrainField } from './TerrainField';
 
 export type ColliderSpec =
   | { kind: 'trimesh'; vertices: Float32Array; indices: Uint32Array }
@@ -34,6 +37,8 @@ export interface ChunkBuild {
   instances: number;
   /** Tree chunks for distance culling. */
   vegetation: THREE.InstancedMesh[];
+  /** Bushes (culled nearer than trees). */
+  shrubs: THREE.InstancedMesh[];
 }
 
 const ROW_STEP = 4;
@@ -90,6 +95,7 @@ class Bucket {
 
 export class ChunkBuilder {
   private readonly gen: RoadGenerator;
+  private readonly field: TerrainField;
   private readonly assets: AutobahnAssets;
   private readonly f: Frame = { x: 0, y: 0, z: 0, heading: 0, curvature: 0, bank: 0 };
   private readonly m = new THREE.Matrix4();
@@ -98,8 +104,9 @@ export class ChunkBuilder {
   private readonly sc = new THREE.Vector3();
   private origin = new THREE.Vector3();
 
-  constructor(gen: RoadGenerator, assets: AutobahnAssets) {
+  constructor(gen: RoadGenerator, field: TerrainField, assets: AutobahnAssets) {
     this.gen = gen;
+    this.field = field;
     this.assets = assets;
   }
 
@@ -111,7 +118,7 @@ export class ChunkBuilder {
     gen.ensure(s1 + 50);
     const o = gen.frame(s0);
     this.origin = new THREE.Vector3(o.x, o.y, o.z);
-    const out: ChunkBuild = { index, s0, s1, origin: this.origin.clone(), group: new THREE.Group(), colliders: [], disposables: [], meshes: 0, instances: 0, vegetation: [] };
+    const out: ChunkBuild = { index, s0, s1, origin: this.origin.clone(), group: new THREE.Group(), colliders: [], disposables: [], meshes: 0, instances: 0, vegetation: [], shrubs: [] };
     out.group.position.copy(this.origin);
     out.group.name = `autobahn-chunk-${index}`;
 
@@ -134,8 +141,8 @@ export class ChunkBuilder {
       terrain: new Bucket(true),
       noiseWall: new Bucket(),
     };
-    const inst = new Map<string, { geo: THREE.BufferGeometry; mat: THREE.Material; list: THREE.Matrix4[]; veg?: boolean; shadow?: boolean }>();
-    const addInst = (key: string, geo: THREE.BufferGeometry, mat: THREE.Material, matrix: THREE.Matrix4, opts: { veg?: boolean; shadow?: boolean } = {}) => {
+    const inst = new Map<string, { geo: THREE.BufferGeometry; mat: THREE.Material; list: THREE.Matrix4[]; veg?: boolean; shrub?: boolean; shadow?: boolean }>();
+    const addInst = (key: string, geo: THREE.BufferGeometry, mat: THREE.Material, matrix: THREE.Matrix4, opts: { veg?: boolean; shrub?: boolean; shadow?: boolean } = {}) => {
       let e = inst.get(key);
       if (!e) {
         e = { geo, mat, list: [], ...opts };
@@ -200,10 +207,24 @@ export class ChunkBuilder {
       out.colliders.push(this.terrainCollider(tRows, band));
     }
     // Under the road: valley floor under bridges, hill roof over tunnels.
-    if (features.some((f) => f.kind === 'bridge' || f.kind === 'tunnel')) this.terrainRibbon(buckets.terrain, tRows, [-S.edge, -S.roadHalf, 0, S.roadHalf, S.edge]);
+    // Under the road: valley floor under bridges (around each bridge only) and the hill's roof over
+    // tunnels (portal to portal only: a ribbon reaching past a portal would close its opening).
+    const under = [-S.edge, -S.roadHalf, 0, S.roadHalf, S.edge];
+    const span = (a: number, b: number) => {
+      const lo = Math.max(s0, a);
+      const hi = Math.min(s1, b);
+      return hi - lo > 0.5 ? [lo, ...tRows.filter((r) => r > lo && r < hi), hi] : null;
+    };
+    for (const f of features) {
+      const rows2 = f.kind === 'bridge' ? span(f.s0 - 40, f.s1 + 40) : f.kind === 'tunnel' ? span(f.s0, f.s1) : null;
+      if (rows2) this.terrainRibbon(buckets.terrain, rows2, under);
+    }
+    // Above each portal's beam: a terrain-coloured face up to the hill, closing the gap to the roof.
+    for (const tn of tunnels) for (const sp of [tn.s0, tn.s1]) if (sp >= s0 && sp < s1) this.portalCap(buckets.terrain, sp, sp === tn.s0 ? 1 : -1);
 
     // --- vegetation (deterministic per chunk) ---------------------------------------------
     this.trees(index, s0, s1, features, addInst);
+    this.shrubs(index, s0, s1, features, addInst);
 
     // --- roadside details -----------------------------------------------------------------
     for (let s = Math.ceil(s0 / 50) * 50; s < s1; s += 50) {
@@ -223,7 +244,7 @@ export class ChunkBuilder {
       addInst('phone', this.assets.box, this.assets.phone, this.m, { shadow: true });
     }
     // Noise barriers in open country now and then (visual only, beyond the rail).
-    if (hash2(this.gen.seed, Math.floor(s0 / 1000), 91) < 0.25 && this.gen.dominantEnvironment(s0) === 'open') {
+    if (hash2(this.gen.seed, Math.floor(s0 / 1000), 91) < 0.25 && this.openCountry(s0)) {
       for (const side of [1, -1] as const) this.wall(buckets.noiseWall, rows, side * (S.edge + 5) - 0.15, side * (S.edge + 5) + 0.15, 4, (s) => !inTunnel(s) && !(side < 0 && sideGap(s)), true);
     }
 
@@ -273,6 +294,7 @@ export class ChunkBuilder {
       out.meshes++;
       out.instances += e.list.length;
       if (e.veg) out.vegetation.push(mesh);
+      if (e.shrub) out.shrubs.push(mesh);
       out.disposables.push({ dispose: () => mesh.dispose() });
     }
     return out;
@@ -381,22 +403,56 @@ export class ChunkBuilder {
 
   private terrainRibbon(b: Bucket, rows: number[], offs: number[]): void {
     const base = b.pos.length / 3;
-    const color = new THREE.Color();
+    const hs = new Float64Array(offs.length);
+    const ws = new Float32Array(offs.length * BIOME_COUNT);
+    const col: [number, number, number] = [0, 0, 0];
     for (const s of rows) {
       const f = this.gen.frame(s, this.f);
-      const env = this.gen.environmentAt(s);
       const cos = Math.cos(f.heading);
       const sin = Math.sin(f.heading);
       const fx = f.x;
       const fz = f.z;
-      for (const off of offs) {
-        const y = this.gen.terrainHeight(s, off);
-        const shade = 0.85 + hash2(this.gen.seed, Math.round(s / 10), Math.round(off)) * 0.15;
-        color.setRGB(0.24 * env.forest + 0.42 * env.open + 0.4 * env.hilly, 0.36 * env.forest + 0.52 * env.open + 0.43 * env.hilly, 0.18 * env.forest + 0.24 * env.open + 0.26 * env.hilly).multiplyScalar(shade);
-        b.vertex(fx + cos * off - this.origin.x, y - this.origin.y, fz - sin * off - this.origin.z, off / 12, s / 12, [color.r, color.g, color.b]);
+      for (let j = 0; j < offs.length; j++) {
+        hs[j] = this.gen.terrainHeight(s, offs[j]);
+        // terrainHeight() leaves the biome weights of that point behind: keep them for the colour.
+        ws.set(this.gen.weights, j * BIOME_COUNT);
+      }
+      for (let j = 0; j < offs.length; j++) {
+        const off = offs[j];
+        const x = fx + cos * off;
+        const z = fz - sin * off;
+        // Slope across the road (rock shows on steep cuts), from the neighbouring columns.
+        const k = Math.min(j, offs.length - 2);
+        const dx = offs[k + 1] - offs[k];
+        const slope = dx > 0 ? Math.abs(hs[k + 1] - hs[k]) / dx : 0;
+        this.field.colour(x, z, ws.subarray(j * BIOME_COUNT, (j + 1) * BIOME_COUNT), 1 / Math.sqrt(1 + slope * slope), 0, off, col, 0);
+        b.vertex(x - this.origin.x, hs[j] - this.origin.y, z - this.origin.z, off / 12, s / 12, col);
       }
     }
     b.grid(base, rows.length, offs.length);
+  }
+
+  /** Vertical face across the road at a portal, from the top of the portal beam to the hill's roof (both sides drawn). */
+  private portalCap(b: Bucket, sp: number, inward: 1 | -1): void {
+    const H = A.features.tunnel.height;
+    const f = this.gen.frame(sp, this.f);
+    const fy = f.y;
+    const roof = this.gen.terrainHeight(sp + inward * 0.5, 0);
+    const bottom = fy + H + 5.5;
+    if (roof <= bottom + 0.1) return;
+    const e = SECTION.edge + 1;
+    const col: [number, number, number] = [0, 0, 0];
+    this.gen.terrainHeight(sp + inward * 0.5, -e);
+    this.field.colour(f.x, f.z, this.gen.weights, 0.6, 0, e, col, 0);
+    const base = b.pos.length / 3;
+    for (const off of [-e, e]) {
+      for (const y of [bottom, roof]) {
+        this.local(sp, off, 0, this.v);
+        b.vertex(this.v.x, y - this.origin.y, this.v.z, off / 12, y / 12, col);
+      }
+    }
+    // Quad (−e bottom, −e top, +e bottom, +e top), both windings.
+    b.idx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3, base, base + 1, base + 2, base + 1, base + 3, base + 2);
   }
 
   /** Road trimesh (with lifted columns where `lift` says). */
@@ -468,38 +524,62 @@ export class ChunkBuilder {
     const minOff = SECTION.edge + 9;
     let i = 0;
     for (let s = s0; s < s1; s += T.spacing) {
-      const env = this.gen.environmentAt(s);
-      const density = env.forest * 0.8 + env.open * 0.12 + env.hilly * 0.42;
       for (let off = minOff; off < T.maxOffset; off += T.spacing) {
         for (const side of [1, -1]) {
           i++;
           const h0 = hash2(seed, index * 4096 + i, side);
-          // Thinner further out (fog hides it) and in open country.
-          if (h0 > density * (1 - (off / T.maxOffset) * 0.55)) continue;
           const ss = s + (hash2(seed, i, 3) - 0.5) * T.spacing;
           const oo = side * (off + (hash2(seed, i, 5) - 0.5) * T.spacing);
-          if (features.some((f) => blocksTrees(f, ss, oo))) continue;
-          const y = this.gen.terrainHeight(ss, oo) - this.origin.y;
+          if (Math.abs(oo) < minOff || Math.abs(oo) > T.maxOffset) continue;
           const f = this.gen.frame(ss, this.f);
-          const x = f.x + Math.cos(f.heading) * oo - this.origin.x;
-          const z = f.z - Math.sin(f.heading) * oo - this.origin.z;
-          const tall = 9 + hash2(seed, i, 7) * 11;
-          const conifer = hash2(seed, i, 9) < env.forest * 0.85 + env.hilly * 0.7 + 0.1;
-          this.q.setFromAxisAngle(UP, hash2(seed, i, 11) * 6.28);
-          this.m.compose(this.v.set(x, y - 0.3, z), this.q, this.sc.set(0.5, tall * 0.35, 0.5));
-          add('trunk', this.assets.cylinder, this.assets.trunk, this.m, { veg: true });
-          if (conifer) {
-            const r = 1.8 + hash2(seed, i, 13) * 1.4;
-            this.m.compose(this.v.set(x, y + tall * 0.2, z), this.q, this.sc.set(r, tall * 0.85, r));
-            add('conifer', this.assets.cone, this.assets.conifer, this.m, { veg: true });
-          } else {
-            const r = 2.6 + hash2(seed, i, 13) * 2;
-            this.m.compose(this.v.set(x, y + tall * 0.55, z), this.q, this.sc.set(r, r * 0.85, r));
-            add('broadleaf', this.assets.sphere, this.assets.broadleaf, this.m, { veg: true });
-          }
+          const x = f.x + Math.cos(f.heading) * oo;
+          const z = f.z - Math.sin(f.heading) * oo;
+          const w = this.gen.biomeWeights(ss, oo, x, z, this.gen.weights);
+          // Stands and clearings: the biome's density, bunched by a slow noise.
+          if (h0 > treeDensity(w, seed, x, z)) continue;
+          const conifer = hash2(seed, i, 9) < BiomeMap.mix(w, 'conifer');
+          if (features.some((ft) => blocksTrees(ft, ss, oo))) continue;
+          const y = this.gen.terrainHeight(ss, oo) - this.origin.y;
+          placeTree(this.assets, seed, i, x - this.origin.x, y, z - this.origin.z, conifer, add, this.m, this.q, this.v, this.sc);
         }
       }
     }
+  }
+
+  /** Bushes between the guard rail and the first trees (biome density, kept off ramps, pads and portals). */
+  private shrubs(index: number, s0: number, s1: number, features: Feature[], add: (key: string, geo: THREE.BufferGeometry, mat: THREE.Material, m: THREE.Matrix4, o?: { shrub?: boolean }) => void): void {
+    const S = A.shrubs;
+    const seed = this.gen.seed ^ 0x5b1;
+    let i = index * 4096;
+    for (let s = s0; s < s1; s += S.spacing) {
+      for (let d = S.from; d < S.to; d += S.spacing) {
+        for (const side of [1, -1]) {
+          i++;
+          const ss = s + (hash2(seed, i, 3) - 0.5) * S.spacing;
+          const oo = side * (SECTION.edge + d + hash2(seed, i, 5) * S.spacing * 0.8);
+          if (features.some((ft) => blocksTrees(ft, ss, oo) || (ft.kind === 'tunnel' && ss >= ft.s0 - 30 && ss <= ft.s1 + 30))) continue;
+          const f = this.gen.frame(ss, this.f);
+          const x = f.x + Math.cos(f.heading) * oo;
+          const z = f.z - Math.sin(f.heading) * oo;
+          const w = this.gen.biomeWeights(ss, oo, x, z, this.gen.weights);
+          if (hash2(seed, i, side) > BiomeMap.mix(w, 'shrubs') * 0.6) continue;
+          const y = this.gen.terrainHeight(ss, oo) - this.origin.y;
+          const r = 0.7 + hash2(seed, i, 7) * 1.1;
+          this.q.setFromAxisAngle(UP, hash2(seed, i, 11) * 6.28);
+          this.m.compose(this.v.set(x - this.origin.x, y + r * 0.35, z - this.origin.z), this.q, this.sc.set(r * 1.3, r * 0.8, r));
+          add('shrub', this.assets.sphere, this.assets.shrub, this.m, { shrub: true });
+        }
+      }
+    }
+  }
+
+  /** Fields, meadows or industry beside the road here (noise walls belong there). */
+  private openCountry(s: number): boolean {
+    const f = this.gen.frame(s, this.f);
+    const off = SECTION.edge + 60;
+    const w = this.gen.biomeWeights(s, off, f.x + Math.cos(f.heading) * off, f.z - Math.sin(f.heading) * off, this.gen.weights);
+    const d = BiomeMap.dominant(w);
+    return d === 'farmland' || d === 'grassland' || d === 'industrial';
   }
 
   // --- features -------------------------------------------------------------------------------
@@ -833,6 +913,30 @@ function gridIndices(rows: number, cols: number): Uint32Array {
     }
   }
   return out;
+}
+
+/** Trees per candidate spot 0..1 for biome weights `w`: the biome density bunched into stands and clearings. */
+export function treeDensity(w: Float32Array, seed: number, x: number, z: number): number {
+  return BiomeMap.mix(w, 'trees') * (0.55 + 0.75 * Math.max(0, valueNoise(seed, x / 110, z / 110) + 0.3));
+}
+
+type AddInstance = (key: string, geo: THREE.BufferGeometry, mat: THREE.Material, m: THREE.Matrix4, o?: { veg?: boolean; shadow?: boolean }) => void;
+
+/** One tree (trunk + crown) at a local position; shared by the chunks and the landscape tiles. */
+export function placeTree(assets: AutobahnAssets, seed: number, i: number, x: number, y: number, z: number, conifer: boolean, add: AddInstance, m: THREE.Matrix4, q: THREE.Quaternion, v: THREE.Vector3, sc: THREE.Vector3): void {
+  const tall = 9 + hash2(seed, i, 7) * 11;
+  q.setFromAxisAngle(UP, hash2(seed, i, 11) * 6.28);
+  m.compose(v.set(x, y - 0.3, z), q, sc.set(0.5, tall * 0.35, 0.5));
+  add('trunk', assets.cylinder, assets.trunk, m, { veg: true });
+  if (conifer) {
+    const r = 1.8 + hash2(seed, i, 13) * 1.4;
+    m.compose(v.set(x, y + tall * 0.2, z), q, sc.set(r, tall * 0.85, r));
+    add('conifer', assets.cone, assets.conifer, m, { veg: true });
+  } else {
+    const r = 2.6 + hash2(seed, i, 13) * 2;
+    m.compose(v.set(x, y + tall * 0.55, z), q, sc.set(r, r * 0.85, r));
+    add('broadleaf', assets.sphere, assets.broadleaf, m, { veg: true });
+  }
 }
 
 /** Keep trees off ramps, rest areas, overpass embankments and tunnel portals. */

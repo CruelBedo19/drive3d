@@ -42,7 +42,9 @@ export class SkyDome {
     const material = this.sky.material as THREE.ShaderMaterial;
     this.skyUniforms = material.uniforms;
     this.skyUniforms.cloudScale.value = 0.00025;
-    this.skyUniforms.cloudSpeed.value = 0.00003;
+    // Drift in noise units per second = time(ms) × speed × 1000: ~0.015 /s, so a cloud takes about a
+    // minute to cross the sky overhead (the add-on's default races across in seconds).
+    this.skyUniforms.cloudSpeed.value = 0.000000015;
     this.skyUniforms.cloudElevation.value = 0.55;
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, this.extra);

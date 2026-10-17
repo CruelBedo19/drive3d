@@ -544,6 +544,23 @@
   min-height: 1.2em;
 }
 
+.loading-bar {
+  width: min(420px, 80vw);
+  height: 6px;
+  margin-top: 18px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.loading-bar > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--m-accent);
+  transition: width 0.15s linear;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

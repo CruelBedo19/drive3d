@@ -63,6 +63,8 @@ const STYLE = {
   player: '#4fd1c5',
   start: '#ffffff',
   fuel: '#f6a623',
+  traffic: 'rgba(236, 240, 245, 0.85)',
+  wreck: '#ff5a4a',
   poi: '#8fb8ff',
 };
 const MIN_PATH_PX = 3;
@@ -79,6 +81,10 @@ export class Minimap {
   readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private data: MapData | null = null;
+  /** Traffic dots: x, z pairs (flag 1 in `trafficFlags` = wreck); drawn as small squares. */
+  private traffic: Float32Array = new Float32Array(0);
+  private trafficFlags: Uint8Array = new Uint8Array(0);
+  private trafficCount = 0;
   private paths: { path: MapPath; shape: Path2D }[] = [];
   private pixelSize = 0;
   private radius = 0;
@@ -91,6 +97,13 @@ export class Minimap {
     const ctx = this.canvas.getContext('2d');
     if (!ctx) throw new Error('2D canvas unavailable');
     this.ctx = ctx;
+  }
+
+  /** Traffic positions for the next draws (the arrays are read, not copied). */
+  setTraffic(xz: Float32Array, flags: Uint8Array, count: number): void {
+    this.traffic = xz;
+    this.trafficFlags = flags;
+    this.trafficCount = count;
   }
 
   setData(data: MapData): void {
@@ -155,6 +168,13 @@ export class Minimap {
       ctx.stroke(shape);
     }
     for (const m of data.markers) this.drawMarker(m, k, size);
+    if (this.trafficCount > 0) {
+      const d = Math.max(2.2, size * 0.022) / k;
+      for (let i = 0; i < this.trafficCount; i++) {
+        ctx.fillStyle = this.trafficFlags[i] ? STYLE.wreck : STYLE.traffic;
+        ctx.fillRect(this.traffic[i * 2] - d / 2, this.traffic[i * 2 + 1] - d / 2, d, d);
+      }
+    }
 
     // Player arrow.
     const [px, py] = minimapCenter(v);
