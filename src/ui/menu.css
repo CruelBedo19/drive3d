@@ -323,6 +323,10 @@
   pointer-events: auto;
 }
 
+.custom-time.is-off {
+  display: none;
+}
+
 .custom-time input[type='range'] {
   width: 160px;
   accent-color: var(--m-accent);
@@ -440,6 +444,12 @@
   text-align: right;
   color: var(--m-dim);
   font-variant-numeric: tabular-nums;
+}
+
+.garage-credit {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--m-dim);
 }
 
 .garage-select {

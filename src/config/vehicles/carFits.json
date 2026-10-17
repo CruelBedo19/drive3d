@@ -1,0 +1,62 @@
+{
+  "bmw_m3_e92": {
+    "wheelRadius": 0.357,
+    "wheelWidth": 0.293,
+    "wheelbase": 2.761,
+    "frontZ": 1.381,
+    "rearZ": -1.38,
+    "frontHalfTrack": 0.752,
+    "rearHalfTrack": 0.752,
+    "length": 4.613,
+    "width": 1.998,
+    "height": 1.458,
+    "minY": 0,
+    "scale": 1.00105,
+    "sizeMB": 2.43
+  },
+  "bmw_m4_f82": {
+    "wheelRadius": 0.303,
+    "wheelWidth": 0.284,
+    "wheelbase": 2.812,
+    "frontZ": 1.406,
+    "rearZ": -1.406,
+    "frontHalfTrack": 0.812,
+    "rearHalfTrack": 0.812,
+    "length": 4.722,
+    "width": 2.012,
+    "height": 1.35,
+    "minY": 0,
+    "scale": 0.25993,
+    "sizeMB": 1.07
+  },
+  "amg_c63s_w205": {
+    "wheelRadius": 0.277,
+    "wheelWidth": 0.236,
+    "wheelbase": 2.84,
+    "frontZ": 1.42,
+    "rearZ": -1.42,
+    "frontHalfTrack": 0.809,
+    "rearHalfTrack": 0.809,
+    "length": 4.737,
+    "width": 2.002,
+    "height": 1.423,
+    "minY": -0.052,
+    "scale": 0.25282,
+    "sizeMB": 7.59
+  },
+  "amg_one": {
+    "wheelRadius": 0.335,
+    "wheelWidth": 0.374,
+    "wheelbase": 2.72,
+    "frontZ": 1.36,
+    "rearZ": -1.36,
+    "frontHalfTrack": 0.84,
+    "rearHalfTrack": 0.845,
+    "length": 4.854,
+    "width": 2.054,
+    "height": 1.198,
+    "minY": 0,
+    "scale": 1.51631,
+    "sizeMB": 2.17
+  }
+}

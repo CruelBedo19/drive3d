@@ -35,7 +35,7 @@ export interface Track extends MapDataProvider {
   readonly attribution?: string;
   /** Per-frame: dynamic props, and detail culling around the camera. */
   update(view?: TrackView): void;
-  /** Wet-road look 0..1 (weather). Visual only. */
+  /** Wet-road look 0..1 (weather): darker, smoother asphalt reflecting a little more sky. Visual only. */
   setWetness?(wetness: number): void;
   dispose(): void;
 }

@@ -5,6 +5,7 @@ import { decimatePath, type MapData } from '../../ui/map/MapData';
 import type { SpawnPoint, TestPoint, Track, TrackView } from '../Track';
 import trackData from '../tracks/nordschleife.json';
 import { TrackCurve, type TrackData, type TrackFrames } from './TrackCurve';
+import { applyWetness, type WettableMaterial } from '../weather/wetSurface';
 import { StripBuilder, type Offset, dashTexture, decalMaterial, kerbTexture, noiseTexture, rng } from './TrackMeshes';
 
 /** Admin teleport points: shortly before these corners (OSM way names). */
@@ -49,7 +50,7 @@ export class NordschleifeTrack implements Track {
   /** Tree chunks with their bounding-sphere centre, for vegetation-distance culling. */
   private readonly treeChunks: { meshes: THREE.InstancedMesh[]; centre: THREE.Vector3; radius: number }[] = [];
   /** Materials that look wet in the rain, with their dry values. */
-  private readonly wettable: { material: THREE.MeshStandardMaterial; roughness: number; color: THREE.Color }[] = [];
+  private readonly wettable: WettableMaterial[] = [];
   private readonly rail = C.width / 2 + C.shoulder;
 
   constructor(world: RAPIER.World) {
@@ -96,12 +97,9 @@ export class NordschleifeTrack implements Track {
     }
   }
 
-  /** Wet look: darker, smoother asphalt and markings that catch light. Visual only. */
+  /** Wet look: darker, smoother asphalt and markings reflecting a little more sky; never a mirror. Visual only. */
   setWetness(wetness: number): void {
-    for (const w of this.wettable) {
-      w.material.roughness = THREE.MathUtils.lerp(w.roughness, 0.22, wetness);
-      w.material.color.copy(w.color).multiplyScalar(1 - 0.35 * wetness);
-    }
+    for (const w of this.wettable) applyWetness(w, wetness);
   }
 
   /** The real track shape for the minimap: centre line every ~6 m, start line marker. */

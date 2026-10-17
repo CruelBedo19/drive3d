@@ -1,5 +1,6 @@
 import { SETUPS, applySetup, type SetupId } from './setups';
 import type { VehicleConfig, VehicleDefinition } from './vehicleTypes';
+import { fittedCar } from './vehicles/fittedCar';
 import { placeholderStreet } from './vehicles/placeholderStreet';
 import { testGltfCar } from './vehicles/testGltfCar';
 
@@ -28,16 +29,31 @@ export interface CarEntry {
   defaultSetup: SetupId;
   /** True while the slot uses a stand-in model / data, waiting for the real car. */
   placeholder: boolean;
+  /** True while the car drives on the test car's handling (only its dimensions are its own). */
+  testPhysics?: boolean;
   description: string;
+  /** Model credit (CC-BY attribution), shown in the garage and listed in CREDITS.md. */
+  credit?: string;
 }
 
-/** Slot 3 placeholder: the test car's physics with its own colour until the real car arrives. */
-const slot3Definition: VehicleDefinition = {
-  physics: { ...placeholderStreet.physics, id: 'car_03', name: 'Slot 3' },
-  visual: { ...placeholderStreet.visual, bodyColor: 0xd9d9d9 },
-};
+const real = (id: string, brand: string, model: string, year: number, color: number, credit: string, description: string, extras: { headlights?: boolean; brakeLights?: boolean; steeringWheel?: boolean } = {}): CarEntry => ({
+  id,
+  brand,
+  model,
+  year,
+  definition: fittedCar({ id, name: `${brand} ${model}`, bodyColor: color, ...extras }),
+  defaultSetup: 'STREET',
+  placeholder: false,
+  testPhysics: true,
+  description,
+  credit,
+});
 
 export const CAR_REGISTRY: readonly CarEntry[] = [
+  real('bmw_m3_e92', 'BMW', 'M3 (E92)', 2008, 0x1d3f8a, 'Galaxy Car Showroom · CC BY 4.0', 'V8 atmosferik coupé.', { headlights: true, brakeLights: true, steeringWheel: true }),
+  real('bmw_m4_f82', 'BMW', 'M4 (F82)', 2014, 0x2a5fb0, 'Galaxy Car Showroom · CC BY 4.0', 'Çift turbo sıralı altı coupé.'),
+  real('amg_c63s_w205', 'Mercedes-AMG', 'C 63 S Coupé (W205)', 2017, 0x9a9a9a, 'GT Cars: Hyperspeed · CC BY 4.0', 'V8 biturbo coupé.', { headlights: true, brakeLights: true }),
+  real('amg_one', 'Mercedes-AMG', 'ONE', 2022, 0xb8b8b8, '3dblender_1 · CC BY 4.0', 'F1 kökenli hibrit hiper otomobil.', { brakeLights: true }),
   {
     id: 'car_01',
     aliases: ['placeholder'],
@@ -60,19 +76,9 @@ export const CAR_REGISTRY: readonly CarEntry[] = [
     placeholder: true,
     description: 'GLB yükleme ve node eşleme hattının test modeli (aynı fizik).',
   },
-  {
-    id: 'car_03',
-    brand: 'Boş slot',
-    model: 'Araç 3',
-    year: null,
-    definition: slot3Definition,
-    defaultSetup: 'STREET',
-    placeholder: true,
-    description: 'Gerçek araç modeli eklenene kadar yer tutucu.',
-  },
 ];
 
-export const DEFAULT_CAR_ID = 'car_01';
+export const DEFAULT_CAR_ID = 'bmw_m3_e92';
 
 /** Registry id or alias → entry. */
 export function findCar(id: string | null | undefined): CarEntry | undefined {

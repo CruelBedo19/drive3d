@@ -2,6 +2,7 @@ import type { SetupId } from '../config/setups';
 import type { VehicleConfig } from '../config/vehicleTypes';
 import type { Vehicle } from '../vehicle/Vehicle';
 import type { TestPoint } from '../world/Track';
+import type { WeatherManager } from '../world/weather/WeatherManager';
 import type { Measurements } from './Measurements';
 
 /** What the admin panel may do to the running game. Implemented by Game. */
@@ -24,4 +25,6 @@ export interface AdminHost {
   stepOnce(): void;
   toggleDebugPanel(): boolean;
   toggleColliders(): boolean;
+  /** Live weather of the session (World / Weather tab), if any. */
+  readonly weather?: WeatherManager;
 }

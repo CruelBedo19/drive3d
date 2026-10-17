@@ -11,6 +11,8 @@ export type SpeedUnit = 'kmh' | 'mph';
 export type ShadowQuality = 'off' | 'low' | 'medium' | 'high';
 export type RenderDistance = 'short' | 'medium' | 'far';
 export type VegetationDistance = 'low' | 'medium' | 'high';
+export type WeatherQuality = 'low' | 'medium' | 'high';
+export type HeadlightModeSetting = 'manual' | 'auto';
 
 export interface UiSettings {
   hud: boolean;
@@ -21,6 +23,7 @@ export interface UiSettings {
   hudScale: number;
   showFps: boolean;
   speedUnit: SpeedUnit;
+  headlightMode: HeadlightModeSetting;
 }
 
 /** Volumes 0..1. Applied through AudioManager; nothing plays sound yet. */
@@ -42,6 +45,8 @@ export interface GraphicsSettings {
   vegetationDistance: VegetationDistance;
   /** Frames per second cap as a string ('0' = unlimited). */
   fpsLimit: '30' | '60' | '120' | '0';
+  /** Rain particle count, clouds, wet-road reflections. */
+  weatherQuality: WeatherQuality;
   /** Only read when the renderer is created: needs a reload. */
   antialias: boolean;
 }
@@ -57,6 +62,7 @@ export interface ControlSettings {
   lookBack: string;
   recover: string;
   respawn: string;
+  headlights: string;
 }
 
 export interface GameSettings {
@@ -131,6 +137,18 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
       { value: 'mph', label: 'mph' },
     ],
   },
+  {
+    section: 'ui',
+    key: 'headlightMode',
+    label: 'Farlar',
+    hint: 'Otomatik: gece, yoğun yağmur ve karanlık havada açılır; L ile geçici olarak değiştirilir',
+    type: 'select',
+    default: 'auto',
+    options: [
+      { value: 'auto', label: 'Otomatik' },
+      { value: 'manual', label: 'Manuel' },
+    ],
+  },
 
   // --- Ses ----------------------------------------------------------------------
   volume('audio', 'master', 'Ana ses', 0.8),
@@ -193,6 +211,19 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
       { value: '0', label: 'Sınırsız' },
     ],
   },
+  {
+    section: 'graphics',
+    key: 'weatherQuality',
+    label: 'Hava efektleri',
+    hint: 'Yağmur yoğunluğu, bulutlar, ıslak yol yansıması',
+    type: 'select',
+    default: 'medium',
+    options: [
+      { value: 'low', label: 'Düşük' },
+      { value: 'medium', label: 'Orta' },
+      { value: 'high', label: 'Yüksek' },
+    ],
+  },
   { section: 'graphics', key: 'antialias', label: 'Kenar yumuşatma', hint: 'Yeniden başlatma gerekir', type: 'toggle', default: true },
 
   // --- Kontroller ---------------------------------------------------------------
@@ -205,6 +236,7 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
   { section: 'controls', key: 'lookBack', label: 'Arkaya bak (basılı tut)', type: 'key', default: 'KeyC' },
   { section: 'controls', key: 'recover', label: 'Aracı düzelt', type: 'key', default: 'KeyR' },
   { section: 'controls', key: 'respawn', label: 'Başa dön (respawn)', type: 'key', default: 'Shift+KeyR' },
+  { section: 'controls', key: 'headlights', label: 'Far aç / kapat', type: 'key', default: 'KeyL' },
 ];
 
 /** Keys the game keeps for itself (menus, developer tools): not bindable. */

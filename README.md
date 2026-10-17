@@ -27,10 +27,21 @@ Developer / old links still start driving directly (menus skipped, nothing saved
 - The car takes input and the simulation steps only in DRIVING. Pause = no physics step, held keys released.
 - Esc: driving ⇄ pause menu (Devam et, Yeniden başlat, Ayarlar, Harita seç, Garaj, Ana menü); elsewhere one screen back.
 - Garage: orbit (drag), zoom (wheel), ← → cars, "Bu aracı seç" (saved). Specs and rating bars come from the car config.
-- Cars: `src/config/carRegistry.ts` (data-driven, 3 slots now, placeholders until real GLBs arrive).
-- Weather / time: `src/world/weather/` (clear, cloudy, rain, fog × morning / noon / evening / night or an exact hour):
-  sky, fog, sun / moon, ambient, exposure, rain streaks, wet-road look, headlight beam. Visual only; the wet-grip hook
-  (`wetGripFactor`) returns 1.
+- Cars: `src/config/carRegistry.ts` (data-driven): BMW M3 E92, BMW M4 F82, Mercedes-AMG C 63 S Coupé,
+  Mercedes-AMG ONE, plus the two test cars. The real cars use the test car's handling with their own
+  dimensions (wheelbase, track, wheel size, body), see `src/config/vehicles/fittedCar.ts`.
+- New car model: put the downloaded GLB in `assets-src/vehicles/`, add a recipe to `scripts/prepare-cars.ts`
+  (nose direction, real wheelbase, optional lamp / steering-wheel names) and run `npm run prepare:cars`: it writes
+  `public/assets/vehicles/<id>/<id>.glb` (metres, nose +Z, ground y = 0, nodes Body / WheelFL..RR / HeadLights /
+  TailLights / SteeringWheel, WebP textures) and the measurements to `carFits.json`. Then one registry entry.
+- Weather / time (`src/world/weather/`, one `WeatherManager` per session): clear, cloudy, rain, heavy rain, fog ×
+  07:00 / 13:00 / 19:00 / 23:00 or any minute. `WeatherState` holds the numbers (preset transitions, real sun path at
+  the Nürburgring latitude, wet → damp → dry road); the manager draws them: procedural sky with drifting clouds and
+  stars (three.js `Sky` + weather / night / horizon-fog blend), matching fog, sun / moon light, a sky environment map
+  (car paint, wet asphalt reflections), GPU rain around the camera slanted by speed. Headlights: `L`, manual or
+  automatic (night, heavy rain, dark sky), lamp meshes glow where the model has them, one shadowless spot light plus a
+  lit-air cone for every car. Graphics → "Hava efektleri" (low / medium / high). F2 → "Dünya / Hava" for live tuning
+  (not saved). Visual only: the wet-grip hook (`wetGripFactor`) returns 1.
 - Saved in localStorage: `drive3d.settings` (versioned, v1 migrated), `drive3d.profile` (map, car, setup, weather, time).
 
 ## Super admin panel (F2)
@@ -127,6 +138,7 @@ See `src/config/vehicles/testGltfCar.ts`.
 | Shift+R | back to the start line |
 | V | camera: chase → close → hood |
 | C (hold) | look back |
+| L | headlights on / off |
 | Esc | pause / back |
 | F2 | super admin panel (dev, or `?admin`) |
 | P / . | pause / single physics step (admin) |
@@ -153,7 +165,7 @@ src/
   admin/     super admin panel: tuning schema, live config, presets, measurements, telemetry graph
   utils/     math, FPS counter
 public/assets/{vehicles,environment,audio}   (vehicles/test-car/test-car.glb: generated test model)
-scripts/     sim-test.ts, vehicle-test.ts, visual-test.ts, admin-test.ts, keyboard-test.ts, track-test.ts, hud-test.ts, phase3-test.ts, lib/sim.ts,
+scripts/     sim-test.ts, vehicle-test.ts, visual-test.ts, admin-test.ts, keyboard-test.ts, track-test.ts, hud-test.ts, phase3-test.ts, weather-test.ts, lib/sim.ts,
              bench.ts, make-test-model.ts, build-nordschleife.ts (+ data/ source cache)
 ```
 

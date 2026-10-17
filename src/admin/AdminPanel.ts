@@ -6,6 +6,7 @@ import { getPath, setPath } from './configPath';
 import { TelemetryGraph } from './TelemetryGraph';
 import { TUNING_GROUPS, type TuningParam } from './tuningSchema';
 import { TuningStore } from './TuningStore';
+import { WeatherAdminPane } from './WeatherAdminPane';
 
 interface ParamRow {
   param: TuningParam;
@@ -40,7 +41,8 @@ export class AdminPanel {
   private readonly setupButtons = new Map<SetupId, HTMLButtonElement>();
   private readonly timeButtons = new Map<number, HTMLButtonElement>();
   private readonly pauseButton: HTMLButtonElement;
-  private tab: 'tune' | 'test' = 'tune';
+  private tab: 'tune' | 'test' | 'world' = 'tune';
+  private weatherPane: WeatherAdminPane | null = null;
   private open = false;
   private uiTimer = 0;
   private base: VehicleConfig;
@@ -59,6 +61,7 @@ export class AdminPanel {
       <nav class="admin-tabs">
         <button data-tab="tune" class="on">Araç ayarları</button>
         <button data-tab="test">Test ortamı</button>
+        <button data-tab="world">Dünya / Hava</button>
       </nav>
       <div class="admin-status"></div>
       <section class="admin-body" data-pane="tune">
@@ -106,8 +109,13 @@ export class AdminPanel {
             <button data-act="colliders">Collider'lar (F4)</button>
           </div>
         </div>
-      </section>`;
+      </section>
+      <section class="admin-body" data-pane="world" hidden></section>`;
     parent.appendChild(this.root);
+    if (host.weather) {
+      this.weatherPane = new WeatherAdminPane(host.weather);
+      this.q('[data-pane="world"]').appendChild(this.weatherPane.root);
+    }
 
     this.statusEl = this.q('.admin-status');
     this.measureEl = this.q('.admin-measure');
@@ -172,6 +180,8 @@ export class AdminPanel {
     if (this.tab === 'test') {
       this.graph.draw();
       this.renderMeasurements();
+    } else if (this.tab === 'world') {
+      this.weatherPane?.sync();
     }
   }
 
@@ -329,7 +339,7 @@ export class AdminPanel {
 
   private readonly onClick = (e: MouseEvent): void => {
     const target = e.target as HTMLElement;
-    const tab = target.dataset.tab as 'tune' | 'test' | undefined;
+    const tab = target.dataset.tab as 'tune' | 'test' | 'world' | undefined;
     if (tab) {
       this.tab = tab;
       for (const b of this.root.querySelectorAll<HTMLElement>('[data-tab]')) b.classList.toggle('on', b.dataset.tab === tab);

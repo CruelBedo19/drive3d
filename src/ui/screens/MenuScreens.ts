@@ -3,16 +3,16 @@ import { SETUP_IDS, type SetupId } from '../../config/setups';
 import type { Profile, TimePreset, WeatherKind } from '../../settings/Profile';
 import { TIME_PRESETS, WEATHER_KINDS } from '../../settings/Profile';
 import type { TrackInfo } from '../../world/trackCatalog';
-import { PRESET_HOURS } from '../../world/weather/Atmosphere';
+import { PRESET_HOURS } from '../../world/weather/WeatherState';
+import { profileHour } from '../../settings/Profile';
 import { Screen, drawOutline, esc } from './Screen';
 
-export const WEATHER_LABELS: Record<WeatherKind, string> = { clear: 'Açık', cloudy: 'Bulutlu', rain: 'Yağmurlu', fog: 'Sisli' };
-export const TIME_LABELS: Record<TimePreset, string> = { morning: 'Sabah', noon: 'Öğlen', evening: 'Akşam', night: 'Gece' };
+export const WEATHER_LABELS: Record<WeatherKind, string> = { clear: 'Açık', cloudy: 'Bulutlu', rain: 'Yağmurlu', heavyRain: 'Yoğun yağmur', fog: 'Sisli' };
+export const TIME_LABELS: Record<TimePreset, string> = { morning: 'Sabah', noon: 'Öğlen', evening: 'Akşam', night: 'Gece', custom: 'Özel' };
 
 export function formatHour(h: number): string {
-  const hh = Math.floor(h);
-  const mm = Math.round((h - hh) * 60);
-  return `${String(hh % 24).padStart(2, '0')}:${String(mm === 60 ? 0 : mm).padStart(2, '0')}`;
+  const total = Math.round(h * 60) % (24 * 60);
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
 export function carTitle(c: CarEntry): string {
@@ -96,7 +96,7 @@ export class MapSelect extends Screen {
       <div class="conditions">
         <div class="seg" role="group" aria-label="Hava"><span class="seg-label">Hava</span>${WEATHER_KINDS.map((w) => `<button data-action="weather" data-value="${w}">${WEATHER_LABELS[w]}</button>`).join('')}</div>
         <div class="seg" role="group" aria-label="Zaman"><span class="seg-label">Zaman</span>${TIME_PRESETS.map((t) => `<button data-action="time" data-value="${t}">${TIME_LABELS[t]}</button>`).join('')}</div>
-        <label class="custom-time"><input type="checkbox" class="custom-toggle"> Özel saat <input type="range" class="custom-hour" min="0" max="23.75" step="0.25"><output class="custom-out"></output></label>
+        <label class="custom-time"><span>Saat</span> <input type="range" class="custom-hour" min="0" max="1439" step="1" aria-label="Özel saat (dakika)"><output class="custom-out"></output></label>
       </div>
       <footer class="screen-foot"><button class="menu-btn is-primary" data-action="next" data-autofocus>DEVAM</button></footer>`;
     this.on('back', actions.back);
@@ -109,16 +109,15 @@ export class MapSelect extends Screen {
     this.on('weather', (el) => {
       actions.changed({ weather: el.dataset.value as WeatherKind });
     });
-    this.on('time', (el) => {
-      actions.changed({ time: el.dataset.value as TimePreset, customHour: null });
-    });
-    const toggle = this.q<HTMLInputElement>('.custom-toggle');
     const range = this.q<HTMLInputElement>('.custom-hour');
-    toggle.addEventListener('change', () => actions.changed({ customHour: toggle.checked ? Number(range.value) : null }));
-    range.addEventListener('input', () => {
-      toggle.checked = true;
-      actions.changed({ customHour: Number(range.value) });
+    this.on('time', (el) => {
+      const time = el.dataset.value as TimePreset;
+      // "Özel" starts from the hour currently shown and opens the slider.
+      if (time === 'custom') actions.changed({ time, customHour: Number(range.value) / 60 });
+      else actions.changed({ time, customHour: null });
     });
+    // The slider works in minutes (00:00 … 23:59) so every value is exact.
+    range.addEventListener('input', () => actions.changed({ time: 'custom', customHour: Number(range.value) / 60 }));
   }
 
   setProfile(profile: Profile): void {
@@ -135,11 +134,11 @@ export class MapSelect extends Screen {
   private refresh(): void {
     for (const card of this.root.querySelectorAll<HTMLElement>('.map-card')) card.classList.toggle('is-selected', card.dataset.id === this.selected);
     for (const b of this.root.querySelectorAll<HTMLElement>('[data-action="weather"]')) b.classList.toggle('is-on', b.dataset.value === this.profile.weather);
-    const custom = this.profile.customHour;
-    for (const b of this.root.querySelectorAll<HTMLElement>('[data-action="time"]')) b.classList.toggle('is-on', custom === null && b.dataset.value === this.profile.time);
-    const hour = custom ?? PRESET_HOURS[this.profile.time];
-    this.q<HTMLInputElement>('.custom-toggle').checked = custom !== null;
-    this.q<HTMLInputElement>('.custom-hour').value = String(hour);
+    for (const b of this.root.querySelectorAll<HTMLElement>('[data-action="time"]')) b.classList.toggle('is-on', b.dataset.value === this.profile.time);
+    const hour = profileHour(this.profile, PRESET_HOURS);
+    const isCustom = this.profile.time === 'custom';
+    this.q('.custom-time').classList.toggle('is-off', !isCustom);
+    this.q<HTMLInputElement>('.custom-hour').value = String(Math.round(hour * 60));
     this.q('.custom-out').textContent = formatHour(hour);
   }
 }
@@ -175,7 +174,7 @@ export class CarConfirm extends Screen {
   render(car: CarEntry, setup: string, track: TrackInfo | undefined, conditions: string): void {
     const s = carSpecs(car.definition.physics);
     this.body.innerHTML = `
-      <span class="tag">${car.placeholder ? 'Yer tutucu model' : esc(car.brand)}</span>
+      <span class="tag">${car.placeholder ? 'Yer tutucu model' : car.testPhysics ? 'Test aracı fiziği' : esc(car.brand)}</span>
       <h2>${esc(carTitle(car))}</h2>
       <dl class="stats">
         <div><dt>Güç</dt><dd>${s.powerPs} PS</dd></div>
@@ -249,10 +248,10 @@ export class GarageUi extends Screen {
     const isSelected = car.id === this.selectedId;
     this.info.innerHTML = `
       <div class="garage-count">${this.index + 1} / ${CAR_REGISTRY.length}</div>
-      <span class="tag">${car.placeholder ? 'Yer tutucu' : 'Araç'}</span>
+      <span class="tag">${car.placeholder ? 'Yer tutucu' : esc(car.brand)}</span>
       <h2>${esc(car.model)}</h2>
       <p class="garage-brand">${esc(car.brand)}${car.year ? ` · ${car.year}` : ''}</p>
-      <p class="garage-desc">${esc(car.description)}</p>
+      <p class="garage-desc">${esc(car.description)}${car.testPhysics ? ' Şimdilik test aracının sürüş fiziğiyle (ölçüler modelin).' : ''}</p>
       <dl class="stats stats-grid">
         <div><dt>Güç</dt><dd>${s.powerPs} PS</dd></div>
         <div><dt>Tork</dt><dd>${s.torqueNm} Nm</dd></div>
@@ -262,7 +261,8 @@ export class GarageUi extends Screen {
         <div><dt>Dingil mesafesi</dt><dd>${s.wheelbaseM.toFixed(2)} m</dd></div>
       </dl>
       <div class="ratings">${bar('Hız', r.speed)}${bar('Hızlanma', r.acceleration)}${bar('Handling', r.handling)}${bar('Fren', r.braking)}</div>
-      <button class="menu-btn is-primary garage-select" data-action="select" ${isSelected ? 'disabled' : 'data-autofocus'}>${isSelected ? 'SEÇİLİ ARAÇ' : 'BU ARACI SEÇ'}</button>`;
+      <button class="menu-btn is-primary garage-select" data-action="select" ${isSelected ? 'disabled' : 'data-autofocus'}>${isSelected ? 'SEÇİLİ ARAÇ' : 'BU ARACI SEÇ'}</button>
+      ${car.credit ? `<p class="garage-credit">Model: ${esc(car.credit)}</p>` : ''}`;
   }
 }
 

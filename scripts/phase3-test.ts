@@ -21,7 +21,7 @@ import { NordschleifeTrack } from '../src/world/nordschleife/NordschleifeTrack';
 import { TestTrack } from '../src/world/TestTrack';
 import { createTrack } from '../src/world/createTrack';
 import { TRACK_CATALOG, trackInfo } from '../src/world/trackCatalog';
-import { PRESET_HOURS, computeAtmosphere, wetGripFactor } from '../src/world/weather/Atmosphere';
+import { PRESET_HOURS, WeatherState, wetGripFactor } from '../src/world/weather/WeatherState';
 import data from '../src/world/tracks/nordschleife.json';
 import { check, finish, makeSim, section } from './lib/sim';
 
@@ -46,7 +46,7 @@ class FakeKeys implements KeyReader {
   }
 }
 
-const rules: ProfileRules = { trackIds: TRACK_IDS, carIds: CAR_REGISTRY.map((c) => c.id), setups: SETUP_IDS, defaults: { trackId: 'test', carId: 'car_01', setup: 'STREET' } };
+const rules: ProfileRules = { trackIds: TRACK_IDS, carIds: CAR_REGISTRY.map((c) => c.id), setups: SETUP_IDS, defaults: { trackId: 'test', carId: 'bmw_m3_e92', setup: 'STREET' } };
 
 async function main(): Promise<void> {
   section('Game state');
@@ -229,18 +229,18 @@ async function main(): Promise<void> {
   section('Garage / vehicle registry');
   {
     const errors = validateRegistry();
-    check('registry is valid, 3 slots', errors.length === 0 && CAR_REGISTRY.length === 3, errors.join('; ') || CAR_REGISTRY.map((c) => c.id).join(', '));
+    check('registry is valid (4 real cars + 2 test cars)', errors.length === 0 && CAR_REGISTRY.filter((c) => !c.placeholder).length === 4 && CAR_REGISTRY.length === 6, errors.join('; ') || CAR_REGISTRY.map((c) => c.id).join(', '));
     const broken: CarEntry[] = [
       { ...CAR_REGISTRY[1], id: 'x' },
       { ...CAR_REGISTRY[1], id: 'x', aliases: [], definition: { ...CAR_REGISTRY[1].definition, visual: { ...CAR_REGISTRY[1].definition.visual, model: { ...CAR_REGISTRY[1].definition.visual.model!, nodes: { ...CAR_REGISTRY[1].definition.visual.model!.nodes, wheelRR: '' } } } } },
     ];
     const brokenErrors = validateRegistry(broken);
     check('validation catches duplicate ids and missing wheel nodes', brokenErrors.some((e) => e.includes('duplicate')) && brokenErrors.some((e) => e.includes('wheelRR')), brokenErrors.join('; '));
-    check('ids and old aliases resolve; unknown → default', findCar('car_02')?.id === 'car_02' && findCar('test-gltf')?.id === 'car_02' && findCar('placeholder')?.id === 'car_01' && getCar('nope').id === 'car_01', 'aliases ok');
+    check('ids and old aliases resolve; unknown → default', findCar('car_02')?.id === 'car_02' && findCar('test-gltf')?.id === 'car_02' && findCar('placeholder')?.id === 'car_01' && getCar('nope').id === 'bmw_m3_e92', 'aliases ok');
     const storage = new MemoryStorage();
     const p = new ProfileStore(rules, storage as unknown as Storage);
-    p.update({ carId: 'car_03' });
-    check('selected car persists', new ProfileStore(rules, storage as unknown as Storage).value.carId === 'car_03', 'reloaded');
+    p.update({ carId: 'amg_one' });
+    check('selected car persists', new ProfileStore(rules, storage as unknown as Storage).value.carId === 'amg_one', 'reloaded');
     const s = carSpecs(getCar('car_01').definition.physics);
     const r = carRatings(getCar('car_01'));
     const rSport = carRatings(getCar('car_01'), 'SPORT');
@@ -255,26 +255,26 @@ async function main(): Promise<void> {
     visual.dispose();
   }
 
-  section('Weather and time');
+  section('Weather and time (details in weather-test.ts)');
   {
-    const noon = computeAtmosphere('clear', PRESET_HOURS.noon);
-    const night = computeAtmosphere('clear', PRESET_HOURS.night);
-    const light = (a: typeof noon) => a.sunIntensity + a.hemiIntensity;
-    check('noon matches the original lighting', noon.sky === 0x9fb8cf && Math.abs(noon.sunIntensity - 2.2) < 0.05 && noon.night === 0, `sun ${noon.sunIntensity.toFixed(2)}, hemi ${noon.hemiIntensity.toFixed(2)}`);
-    check('night is dark but drivable', night.night === 1 && light(night) < light(noon) * 0.4 && night.hemiIntensity >= 0.5, `light ${light(night).toFixed(2)} vs ${light(noon).toFixed(2)}, hemi ${night.hemiIntensity.toFixed(2)}`);
-    const rain = computeAtmosphere('rain', 13);
-    const fog = computeAtmosphere('fog', 13);
-    check('rain: wet road, particles, less sun; fog: short visibility', rain.wetness === 1 && rain.rain === 1 && rain.sunIntensity < noon.sunIntensity * 0.3 && fog.visibility < 0.3, `rain sun ${rain.sunIntensity.toFixed(2)}, fog visibility ${fog.visibility}`);
+    const at = (kind: Parameters<typeof WeatherState.prototype.setWeather>[0], hour: number) => new WeatherState(kind, hour).snapshot();
+    const noon = at('clear', PRESET_HOURS.noon);
+    const night = at('clear', PRESET_HOURS.night);
+    const light = (a: typeof noon) => a.lightIntensity + a.hemiIntensity;
+    check('clear noon: strong sun, like the original lighting', Math.abs(noon.lightIntensity - 2.2) < 0.3 && noon.night === 0, `sun ${noon.lightIntensity.toFixed(2)}, hemi ${noon.hemiIntensity.toFixed(2)}`);
+    // Ambient at night = hemisphere + sky environment light: kept above a drivable floor.
+    check('night is dark but drivable', night.night === 1 && light(night) < light(noon) * 0.4 && night.hemiIntensity + night.envIntensity >= 0.7, `light ${light(night).toFixed(2)} vs ${light(noon).toFixed(2)}, ambient ${(night.hemiIntensity + night.envIntensity).toFixed(2)}`);
+    const rain = at('heavyRain', 13);
+    const fog = at('fog', 13);
+    check('heavy rain: wet road, rain, little sun; fog: short visibility', rain.wetness === 1 && rain.rain === 1 && rain.lightIntensity < noon.lightIntensity * 0.4 && fog.visibility < 0.3, `rain sun ${rain.lightIntensity.toFixed(2)}, fog visibility ${fog.visibility.toFixed(2)}`);
     check('wet grip hook exists but does not change handling', wetGripFactor(1) === 1, 'factor 1');
-    const evening = computeAtmosphere('clear', PRESET_HOURS.evening);
-    check('custom hour works (00:00-23:59)', computeAtmosphere('clear', 23.99).night === 1 && evening.sunDirection.y > 0 && computeAtmosphere('clear', 25).hour === 1, `evening sun y ${evening.sunDirection.y.toFixed(2)}`);
     const storage = new MemoryStorage();
     const p = new ProfileStore(rules, storage as unknown as Storage);
     check('default weather: clear + noon', p.value.weather === 'clear' && p.value.time === 'noon' && p.value.customHour === null, JSON.stringify(p.value));
-    p.update({ weather: 'rain', time: 'night', customHour: 21.5 });
+    p.update({ weather: 'heavyRain', time: 'custom', customHour: 21.5 });
     const re = new ProfileStore(rules, storage as unknown as Storage).value;
-    p.update({ customHour: 30 });
-    check('weather / time persist; bad hour rejected', re.weather === 'rain' && re.time === 'night' && re.customHour === 21.5 && p.value.customHour === null, JSON.stringify(re));
+    p.update({ time: 'custom', customHour: 30 });
+    check('weather / custom time persist; bad hour rejected', re.weather === 'heavyRain' && re.time === 'custom' && re.customHour === 21.5 && p.value.time === 'noon' && p.value.customHour === null, JSON.stringify(re));
     const physics = await PhysicsWorld.create();
     const ns = new NordschleifeTrack(physics.world);
     ns.setWetness(1);

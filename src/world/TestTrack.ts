@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GAME_CONFIG } from '../config/gameConfig';
 import { RAPIER } from '../core/PhysicsWorld';
 import type { MapData } from '../ui/map/MapData';
+import { applyWetness, type WettableMaterial } from './weather/wetSurface';
 import type { SpawnPoint, TestPoint, Track } from './Track';
 
 /** A placed box: centre, half extents, yaw around world Y. */
@@ -63,7 +64,7 @@ export class TestTrack implements Track {
     viewRadius: 140,
   };
 
-  private ground: THREE.MeshStandardMaterial | null = null;
+  private ground: WettableMaterial | null = null;
   private readonly world: RAPIER.World;
   private readonly props: DynamicProp[] = [];
   private propMesh: THREE.InstancedMesh | null = null;
@@ -135,11 +136,9 @@ export class TestTrack implements Track {
     if (dirty) mesh.instanceMatrix.needsUpdate = true;
   }
 
-  /** Wet look for the ground (darker, smoother). Visual only. */
+  /** Wet look for the ground (darker, smoother, faint sky reflection). Visual only. */
   setWetness(wetness: number): void {
-    if (!this.ground) return;
-    this.ground.roughness = THREE.MathUtils.lerp(0.95, 0.25, wetness);
-    this.ground.color.setHex(0x3a3d42).multiplyScalar(1 - 0.35 * wetness);
+    if (this.ground) applyWetness(this.ground, wetness);
   }
 
   dispose(): void {
@@ -155,7 +154,7 @@ export class TestTrack implements Track {
     const geo = this.track(new THREE.PlaneGeometry(GROUND_HALF * 2, GROUND_HALF * 2));
     geo.rotateX(-Math.PI / 2);
     const mat = this.track(new THREE.MeshStandardMaterial({ color: 0x3a3d42, roughness: 0.95 }));
-    this.ground = mat;
+    this.ground = { material: mat, roughness: mat.roughness, color: mat.color.clone() };
     const ground = new THREE.Mesh(geo, mat);
     ground.receiveShadow = true;
     this.group.add(ground);

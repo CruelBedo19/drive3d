@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import { CHASE_CLOSE, CHASE_NORMAL, CameraRig, ChaseCamera, HoodCamera, type CameraTarget } from '../camera/CameraRig';
 import { bindingCode, updateCameraInput } from '../camera/cameraInput';
 import type { CarEntry } from '../config/carRegistry';
@@ -24,6 +23,7 @@ import { VehiclePhysics } from '../vehicle/physics/VehiclePhysics';
 import { createVehicleVisual } from '../vehicle/visual/createVehicleVisual';
 import type { VehicleVisual } from '../vehicle/visual/VehicleVisual';
 import { createTrack } from '../world/createTrack';
+import { HeadlightController, HeadlightRig } from '../world/weather/Headlights';
 import { WeatherManager } from '../world/weather/WeatherManager';
 import { DrivingSim } from './DrivingSim';
 import { PhysicsDebugRenderer } from './PhysicsDebugRenderer';
@@ -54,8 +54,6 @@ export interface SessionOptions {
 
 const VEGETATION_DISTANCE: Record<VegetationDistance, number> = { low: 220, medium: 450, high: 900 };
 const DEFAULT_FOG = { near: 150, far: 650 };
-/** Headlight beam (one spot light parented to the car, off by day). */
-const HEADLIGHT = { intensity: 180, distance: 90, angle: 0.5, penumbra: 0.45, decay: 1.4 };
 
 /**
  * One driving session: track, car, camera, HUD, weather, admin tools. Created
@@ -81,7 +79,11 @@ export class Game implements AdminHost {
   private readonly cameraRig: CameraRig;
   private readonly cameraTarget: CameraTarget;
   private readonly hud: Hud;
-  private readonly headlight: THREE.SpotLight;
+  /** Light switch (manual / auto + L) and the light itself. */
+  readonly headlights: HeadlightController;
+  private readonly headlightRig: HeadlightRig;
+  /** Read by the visual proxy: model lamp meshes glow when on. */
+  private lampsOn = false;
   private readonly unsubscribeSettings: () => void;
   private readonly fps = new FpsCounter();
   private readonly debug: DebugOverlay | null;
@@ -117,18 +119,30 @@ export class Game implements AdminHost {
     this.visual = createVehicleVisual(this.car.definition);
     const spawn = track.spawn;
     const start = spawn.position.clone().setY(spawn.position.y + VehiclePhysics.restHeight(config) + 0.05);
-    this.vehicle = new Vehicle(physics.world, config, this.visual, start, spawn.yaw);
+    // The vehicle drives its visual every frame; this thin proxy adds the headlight state
+    // (the vehicle code itself doesn't know about the light switch).
+    const real = this.visual;
+    const proxy: VehicleVisual = {
+      root: real.root,
+      hoodCameraOffset: real.hoodCameraOffset,
+      update: (state) => {
+        state.headlights = this.lampsOn;
+        real.update(state);
+      },
+      dispose: () => real.dispose(),
+    };
+    this.vehicle = new Vehicle(physics.world, config, proxy, start, spawn.yaw);
     renderer.scene.add(this.visual.root);
     const driving = new DrivingInput(ctx.input, () => this.settings.controls);
     this.sim = new DrivingSim(physics, track, this.vehicle, driving);
     if (ctx.admin) this.sim.onStep = (dt) => this.measure(dt);
 
-    this.headlight = new THREE.SpotLight(0xfff4e0, 0, HEADLIGHT.distance, HEADLIGHT.angle, HEADLIGHT.penumbra, HEADLIGHT.decay);
-    this.headlight.position.set(0, 0.7, 2.3);
-    this.headlight.target.position.set(0, -0.6, 14);
-    this.visual.root.add(this.headlight, this.headlight.target);
+    // One shadowless spot light at the nose (works for every car, with or without lamp meshes).
+    this.headlightRig = new HeadlightRig(config.chassis.halfExtents.z * 0.98, 0.05);
+    this.visual.root.add(this.headlightRig.group);
+    this.headlights = new HeadlightController(this.settings.ui.headlightMode);
 
-    this.weather = new WeatherManager(renderer, track, options.weather, options.hour);
+    this.weather = new WeatherManager(renderer, track, options.weather, options.hour, this.settings.graphics.weatherQuality);
 
     this.cameraTarget = {
       position: this.vehicle.renderPosition,
@@ -145,11 +159,13 @@ export class Game implements AdminHost {
     this.hud.setVisible(false);
     this.unsubscribeSettings = ctx.settings.subscribe((s) => {
       this.settings = s;
+      this.weather.setQuality(s.graphics.weatherQuality);
+      this.headlights.setMode(s.ui.headlightMode);
       this.hud.applySettings(s.ui);
       const k = s.controls;
       this.hud.setHelp(
         `${keyLabel(k.throttle)}/${keyLabel(k.brake)} gaz-fren · ${keyLabel(k.left)}/${keyLabel(k.right)} direksiyon · ${keyLabel(k.handbrake)} el freni · ` +
-          `${keyLabel(k.camera)} kamera · ${keyLabel(k.lookBack)} arkaya bak · ${keyLabel(k.recover)} düzelt · ${keyLabel(k.respawn)} başa dön · Esc duraklat`,
+          `${keyLabel(k.camera)} kamera · ${keyLabel(k.lookBack)} arkaya bak · ${keyLabel(k.headlights)} far · ${keyLabel(k.recover)} düzelt · ${keyLabel(k.respawn)} başa dön · Esc duraklat`,
       );
     });
 
@@ -272,8 +288,10 @@ export class Game implements AdminHost {
     this.cameraRig.update(simDt, this.cameraTarget);
     this.ctx.renderer.setShadowFocus(this.vehicle.renderPosition);
     this.sim.track.update({ camera: camera.position, vegetationDistance: VEGETATION_DISTANCE[this.settings.graphics.vegetationDistance] });
-    this.weather.update(running ? dt : 0, camera.position);
-    this.headlight.intensity = this.weather.headlights ? HEADLIGHT.intensity : 0;
+    this.weather.update(running ? dt * this.timeScale : 0, camera.position, this.vehicle.physics.linearVelocity);
+    const w = this.weather.snapshot;
+    this.lampsOn = this.headlights.update(this.weather.headlightsWanted);
+    this.headlightRig.update(this.lampsOn, Math.min(1, w.rain * 0.9 + (1 - Math.min(1, w.visibility)) * 0.8), Math.max(w.night, 1 - w.daylight));
 
     this.fps.tick(dt);
     this.hud.update(dt, this.hudFrame());
@@ -296,7 +314,7 @@ export class Game implements AdminHost {
     this.debug?.dispose();
     this.physicsDebug?.dispose();
     this.weather.dispose();
-    this.headlight.dispose();
+    this.headlightRig.dispose();
     this.visual.root.removeFromParent();
     this.sim.track.group.removeFromParent();
     this.sim.dispose();
@@ -362,6 +380,10 @@ export class Game implements AdminHost {
       if (input.wasPressed('F2')) this.admin.toggle();
       if (input.wasPressed('KeyP')) this.admin.handleKey('KeyP');
       if (input.wasPressed('Period')) this.admin.handleKey('Period');
+    }
+    if (pressedBinding(input, c.headlights)) {
+      this.headlights.toggle();
+      this.hud.showToast(`Farlar: ${this.headlights.on ? 'açık' : 'kapalı'}${this.headlights.mode === 'auto' ? ' (otomatik geçici olarak değişti)' : ''}`);
     }
     const respawn = pressedBinding(input, c.respawn);
     if (respawn) {

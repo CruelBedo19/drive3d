@@ -1,65 +1,128 @@
+/*
+ * GPU rain adapted from the rain vertex shader of "Procedural Weather — Three.js
+ * Skill" by Kingsley (MIT, https://github.com/CK42BB/procedural-weather-threejs):
+ * static line segments animated entirely in the vertex shader (fall + wrap in a
+ * box around the camera). Changes here: world-stable wrapping (drops don't slide
+ * with the camera), streaks slanted by the car's motion, distance fade, a draw
+ * range from the intensity, and brightness that follows the light.
+ */
 import * as THREE from 'three';
 
-const DROPS = 4500;
-const BOX = { x: 70, y: 32, z: 70 };
-const FALL_SPEED = 19;
-const STREAK = 0.45;
+export interface RainQuality {
+  /** Drops at full intensity. */
+  drops: number;
+}
 
-/**
- * Rain streaks in a box that follows the camera. One LineSegments draw call;
- * positions move on the CPU (4.5k drops ≈ 27k floats per frame) and wrap in
- * the box, so no allocation after construction.
- */
+const RADIUS = 26;
+const HEIGHT = 22;
+const FALL = 17;
+
+const VERT = /* glsl */ `
+attribute vec2 aSeed;   // x: fall-speed variation, y: phase
+attribute float aEnd;   // 0 = head of the streak, 1 = tail
+uniform float uTime;
+uniform vec3 uCamera;
+uniform vec3 uStreak;   // tail offset (falling direction seen from the moving car) * length
+uniform float uRadius;
+uniform float uHeight;
+uniform float uFall;
+varying float vAlpha;
+
+void main() {
+  float speed = uFall * (0.82 + aSeed.x * 0.36);
+  float y = mod(position.y - uTime * speed + aSeed.y * uHeight, uHeight);
+  // Columns are fixed in the world and wrapped into the box around the camera.
+  vec2 rel = mod(position.xz - uCamera.xz + uRadius, 2.0 * uRadius) - uRadius;
+  vec3 world = vec3(uCamera.x + rel.x, uCamera.y - uHeight * 0.4 + y, uCamera.z + rel.y);
+  world += uStreak * aEnd;
+  float d = length(rel);
+  vAlpha = smoothstep(uRadius, uRadius * 0.55, d) * smoothstep(0.0, 2.5, d);
+  gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
+}`;
+
+const FRAG = /* glsl */ `
+uniform vec3 uColor;
+uniform float uOpacity;
+varying float vAlpha;
+void main() {
+  if (vAlpha < 0.01) discard;
+  gl_FragColor = vec4(uColor, vAlpha * uOpacity);
+}`;
+
 export class Rain {
   readonly object: THREE.LineSegments;
-  private readonly positions: Float32Array;
-  private readonly offsets: Float32Array;
-  private readonly geometry: THREE.BufferGeometry;
-  private readonly material: THREE.LineBasicMaterial;
+  private readonly geometry = new THREE.BufferGeometry();
+  private readonly material: THREE.ShaderMaterial;
+  private drops = 0;
+  private time = 0;
+  private readonly fallDir = new THREE.Vector3();
 
-  constructor() {
-    this.positions = new Float32Array(DROPS * 6);
-    this.offsets = new Float32Array(DROPS * 3);
-    for (let i = 0; i < DROPS; i++) {
-      this.offsets[i * 3] = (Math.random() - 0.5) * BOX.x;
-      this.offsets[i * 3 + 1] = Math.random() * BOX.y;
-      this.offsets[i * 3 + 2] = (Math.random() - 0.5) * BOX.z;
-    }
-    this.geometry = new THREE.BufferGeometry();
-    this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
-    this.material = new THREE.LineBasicMaterial({ color: 0xc4ccd6, transparent: true, opacity: 0.45, depthWrite: false, fog: true });
+  constructor(quality: RainQuality) {
+    this.material = new THREE.ShaderMaterial({
+      vertexShader: VERT,
+      fragmentShader: FRAG,
+      uniforms: {
+        uTime: { value: 0 },
+        uCamera: { value: new THREE.Vector3() },
+        uStreak: { value: new THREE.Vector3(0, -1, 0) },
+        uRadius: { value: RADIUS },
+        uHeight: { value: HEIGHT },
+        uFall: { value: FALL },
+        uColor: { value: new THREE.Color(0xc8d2dc) },
+        uOpacity: { value: 0.4 },
+      },
+      transparent: true,
+      depthWrite: false,
+    });
     this.object = new THREE.LineSegments(this.geometry, this.material);
     this.object.frustumCulled = false;
     this.object.visible = false;
     this.object.renderOrder = 5;
+    this.setQuality(quality);
   }
 
-  /** `intensity` 0..1 sets how many drops are drawn. */
-  update(dt: number, centre: THREE.Vector3, intensity: number): void {
-    this.object.visible = intensity > 0.01;
-    if (!this.object.visible) return;
-    const count = Math.floor(DROPS * intensity);
-    const o = this.offsets;
-    const p = this.positions;
-    const fall = FALL_SPEED * dt;
-    const baseY = centre.y - BOX.y * 0.35;
-    for (let i = 0; i < count; i++) {
-      let y = o[i * 3 + 1] - fall;
-      if (y < 0) y += BOX.y;
-      o[i * 3 + 1] = y;
-      // Drops are placed relative to a grid snapped around the camera so they don't slide with it.
-      const x = wrap(o[i * 3] - centre.x, BOX.x) + centre.x;
-      const z = wrap(o[i * 3 + 2] - centre.z, BOX.z) + centre.z;
-      const k = i * 6;
-      p[k] = x;
-      p[k + 1] = baseY + y;
-      p[k + 2] = z;
-      p[k + 3] = x + 0.04;
-      p[k + 4] = baseY + y + STREAK;
-      p[k + 5] = z;
+  /** Rebuilds the (static) drop buffer for a new count. Only on settings changes. */
+  setQuality(q: RainQuality): void {
+    if (q.drops === this.drops) return;
+    this.drops = q.drops;
+    const n = q.drops;
+    const pos = new Float32Array(n * 6);
+    const seed = new Float32Array(n * 4);
+    const end = new Float32Array(n * 2);
+    for (let i = 0; i < n; i++) {
+      const x = (Math.random() * 2 - 1) * RADIUS * 4;
+      const y = Math.random() * HEIGHT;
+      const z = (Math.random() * 2 - 1) * RADIUS * 4;
+      const s = Math.random();
+      const p = Math.random();
+      pos.set([x, y, z, x, y, z], i * 6);
+      seed.set([s, p, s, p], i * 4);
+      end[i * 2 + 1] = 1;
     }
-    this.geometry.setDrawRange(0, count * 2);
-    (this.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this.geometry.setAttribute('aSeed', new THREE.BufferAttribute(seed, 2));
+    this.geometry.setAttribute('aEnd', new THREE.BufferAttribute(end, 1));
+    this.geometry.setDrawRange(0, 0);
+  }
+
+  /**
+   * @param intensity 0..1 (sets how many drops are drawn and how long they are)
+   * @param velocity car velocity (m/s): the faster you drive, the flatter the rain seems to fall
+   * @param brightness 0..1 from the light level (rain is grey at night, not glowing)
+   */
+  update(dt: number, camera: THREE.Vector3, intensity: number, velocity: THREE.Vector3, brightness: number): void {
+    const active = Math.floor(this.drops * Math.min(1, intensity));
+    this.object.visible = active > 0;
+    if (!this.object.visible) return;
+    this.time += dt;
+    const u = this.material.uniforms;
+    u.uTime.value = this.time;
+    (u.uCamera.value as THREE.Vector3).copy(camera);
+    const length = 0.7 + intensity * 0.9;
+    this.fallDir.set(-velocity.x, -FALL, -velocity.z).normalize().multiplyScalar(length);
+    (u.uStreak.value as THREE.Vector3).copy(this.fallDir);
+    u.uOpacity.value = (0.22 + intensity * 0.3) * (0.35 + 0.65 * brightness);
+    this.geometry.setDrawRange(0, active * 2);
   }
 
   dispose(): void {
@@ -67,9 +130,4 @@ export class Rain {
     this.material.dispose();
     this.object.removeFromParent();
   }
-}
-
-/** Wraps v into [-size/2, size/2). */
-function wrap(v: number, size: number): number {
-  return ((((v + size / 2) % size) + size) % size) - size / 2;
 }

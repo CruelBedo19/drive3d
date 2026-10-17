@@ -9,14 +9,14 @@ import { PhysicsWorld } from '../core/PhysicsWorld';
 import { Renderer } from '../core/Renderer';
 import { GarageScene } from '../garage/GarageScene';
 import { InputManager } from '../input/InputManager';
-import { ProfileStore, type Profile } from '../settings/Profile';
+import { ProfileStore, profileHour, type Profile } from '../settings/Profile';
 import { SettingsStore, type GameSettings } from '../settings/Settings';
 import { CarConfirm, GarageUi, LoadingScreen, MainMenu, MapSelect, PauseMenu, TIME_LABELS, WEATHER_LABELS, carTitle, formatHour } from '../ui/screens/MenuScreens';
 import type { Screen } from '../ui/screens/Screen';
 import { SettingsScreen } from '../ui/screens/SettingsScreen';
 import { FrameTimer } from '../utils/FrameTimer';
 import { TRACK_CATALOG, trackInfo } from '../world/trackCatalog';
-import { PRESET_HOURS } from '../world/weather/Atmosphere';
+import { PRESET_HOURS } from '../world/weather/WeatherState';
 
 export interface AppOptions {
   admin: boolean;
@@ -226,8 +226,8 @@ export class App {
 
   private renderConfirm(): void {
     const p = this.effectiveProfile();
-    const hour = p.customHour ?? PRESET_HOURS[p.time];
-    const when = p.customHour !== null ? formatHour(hour) : TIME_LABELS[p.time];
+    const hour = profileHour(p, PRESET_HOURS);
+    const when = p.time === 'custom' ? formatHour(hour) : `${TIME_LABELS[p.time]} ${formatHour(hour)}`;
     this.carConfirm.render(getCar(p.carId), p.setup, trackInfo(p.trackId), `${WEATHER_LABELS[p.weather]} · ${when}`);
   }
 
@@ -257,7 +257,7 @@ export class App {
       await nextFrame();
       if (token !== this.loadToken) return physics.dispose();
       const ctx: SessionContext = { container: this.container, renderer: this.renderer, input: this.input, settings: this.settings, admin: this.options.admin, carIds: CAR_REGISTRY.map((c) => c.id), frameTimer: this.frameTimer };
-      const game = new Game(ctx, physics, { car, setup, track, weather: p.weather, hour: p.customHour ?? PRESET_HOURS[p.time] });
+      const game = new Game(ctx, physics, { car, setup, track, weather: p.weather, hour: profileHour(p, PRESET_HOURS) });
       this.loading.stage('Araç modeli yükleniyor…');
       await game.modelReady;
       if (token !== this.loadToken) return game.dispose();

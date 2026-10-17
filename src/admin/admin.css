@@ -300,3 +300,27 @@ body.admin-open .hud-top {
     width: 100vw;
   }
 }
+
+/* World / Weather tab */
+.admin-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--a-dim);
+  margin: 6px 0 0;
+}
+
+.admin-row-ctl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-row-ctl input[type='range'] {
+  flex: 1;
+}
+
+.admin-wx-readout {
+  margin-top: 6px;
+}
