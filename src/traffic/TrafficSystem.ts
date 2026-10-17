@@ -424,10 +424,10 @@ export class TrafficSystem {
     const lowVis = this.conditions.visibility < 0.45;
     const lead = this.leader(this.net.laneId(cw, v.lane), key, v.id);
     // Bold drivers now and then cut into the player's lane just ahead of it (a gap of ≥ 2.5 s is still kept).
-    if (v.bold && this.playerOnRoad && cw === this.playerCarriageway && this.time - this.lastCutIn > 12) {
+    if (v.bold && this.playerOnRoad && cw === this.playerCarriageway && this.time - this.lastCutIn > (this.cutIns === 'many' ? 8 : 14)) {
       const pl = Math.round(this.playerLanePos);
       const ahead = (key - this.playerEntity.key) - (this.playerEntity.len + v.klass.length) / 2;
-      if (Math.abs(pl - v.lane) === 1 && pl >= 0 && pl <= v.klass.maxLane && ahead > 4 && ahead < 70 && this.rand() < dt * (this.cutIns === 'many' ? 0.35 : 0.15)) {
+      if (Math.abs(pl - v.lane) === 1 && pl >= 0 && pl <= v.klass.maxLane && ahead > 4 && ahead < 70 && this.rand() < dt * (this.cutIns === 'many' ? 0.6 : 0.2)) {
         if (this.laneSafe(v, pl, T, false)) {
           this.startIndicate(v, pl);
           this.lastCutIn = this.time;
@@ -514,7 +514,7 @@ export class TrafficSystem {
       // Braking it would force on the follower (generic driver).
       const sStar = 2.5 + Math.max(0, f.v * 1.2 + (f.v * closing) / (2 * Math.sqrt(2 * 3)));
       const bF = 2 * (1 - (sStar / Math.max(gap, 0.3)) ** 2);
-      if (bF < (abort || bold ? -5 : -2)) return false;
+      if (bF < (bold ? -9 : abort ? -5 : -2)) return false;
     } else if (!f && !abort && this.conditions.visibility < 0.3) {
       // Thick fog: what isn't visible may still be coming.
       return false;
@@ -788,7 +788,7 @@ export class TrafficSystem {
         }
         // Where new traffic enters the bubble: ahead for the oncoming side and when the player is
         // faster than traffic; behind (out of sight) when it is slower, so faster cars come past.
-        const ahead = cw === 1 || this.playerV > 30 || this.rand() < 0.5;
+        const ahead = cw === 1 || this.playerV > 38 || this.rand() < 0.5;
         const s = ahead ? sp + TRAFFIC.ahead - this.rand() * 300 : sp - TRAFFIC.behind + this.rand() * 120;
         this.trySpawn(cw, s, !ahead);
       }

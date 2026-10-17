@@ -54,20 +54,35 @@ export class GarageScene {
   }
 
   /** Shows `def` on the turntable (the previous car's resources are released). */
+  /**
+   * Shows a car. A glTF model loads asynchronously: the car on the turntable
+   * stays until the new model is ready, then they swap (the stand-in test car
+   * a loading model shows is never seen here).
+   */
   setCar(def: VehicleDefinition): void {
-    this.disposeCar();
+    const token = ++this.carToken;
     const visual = createVehicleVisual(def);
-    const p = def.physics;
-    const rest = VehiclePhysics.restHeight(p);
+    const rest = VehiclePhysics.restHeight(def.physics);
     visual.root.position.y = rest;
-    this.pose = staticPose(def, rest);
-    visual.update(this.pose);
-    visual.root.traverse((o) => {
-      if (o instanceof THREE.Mesh) o.castShadow = true;
-    });
-    this.carRoot.add(visual.root);
-    this.visual = visual;
+    const pose = staticPose(def, rest);
+    visual.update(pose);
+    const show = () => {
+      if (token !== this.carToken || this.disposed) return visual.dispose();
+      this.disposeCar();
+      visual.update(pose);
+      visual.root.traverse((o) => {
+        if (o instanceof THREE.Mesh) o.castShadow = true;
+      });
+      this.carRoot.add(visual.root);
+      this.visual = visual;
+      this.pose = pose;
+    };
+    const ready = (visual as { ready?: Promise<boolean> }).ready;
+    if (ready) void ready.then(show, show);
+    else show();
   }
+  private carToken = 0;
+  private disposed = false;
 
   setMode(mode: GarageMode): void {
     this.mode = mode;
@@ -104,6 +119,7 @@ export class GarageScene {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.controls.dispose();
     this.disposeCar();
     for (const o of this.owned) o.dispose();

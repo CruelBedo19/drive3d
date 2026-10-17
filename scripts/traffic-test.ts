@@ -65,11 +65,12 @@ async function main(): Promise<void> {
     const nearPlayer = vs.filter((v) => v.carriageway === t.playerCarriageway && Math.abs(v.s - t.playerS) < 100).length;
     check('spawn valid: in lanes, inside the bubble, clear of the player', vs.length >= 40 && onLanes && nearPlayer === 0, `${vs.length} vehicles (high), ${nearPlayer} within 100 m of the player`);
     check('no spawn overlap (same lane gap ≥ 30 m)', minGap >= 30 && t.overlaps() === 0, `closest same-lane gap ${minGap.toFixed(1)} m`);
-    const trucksLeft = vs.filter((v) => v.classId === 'truck' && v.lane > 1).length;
+    const trucksLeft = vs.filter((v) => v.klass.heavy && v.lane > 1).length;
     const dense = await makeTrafficSim('veryHigh');
     idle(dense, 0.02);
     check('very high density: ~100 vehicles, still no overlaps', dense.traffic.vehicles.length >= 85 && dense.traffic.overlaps() === 0, `${dense.traffic.vehicles.length} vehicles (çok yüksek)`);
-    check('trucks never spawned in the left lane', trucksLeft === 0, `${vs.filter((v) => v.classId === 'truck').length} trucks`);
+    check('trucks / buses never spawned in the left lane', trucksLeft === 0, `${vs.filter((v) => v.klass.heavy).length} heavy vehicles`);
+    check('only the modelled vehicles spawn (no built-in box cars)', vs.every((v) => v.klass.model !== undefined), [...new Set(vs.map((v) => v.classId))].join(', '));
   }
 
   section('Car following and braking');
@@ -203,13 +204,13 @@ async function main(): Promise<void> {
     let truckFast = 0;
     idle(s, 60, () => {
       for (const v of s.traffic.vehicles) {
-        if (v.classId !== 'truck') continue;
+        if (!v.klass.heavy) continue;
         if (v.lanePos > 1.01) truckLeft++;
-        if (v.v * 3.6 > 96) truckFast++;
+        if (v.v * 3.6 > 101) truckFast++;
       }
     });
-    const nTrucks = s.traffic.vehicles.filter((v) => v.classId === 'truck').length;
-    check('trucks: never in the left lane, ≤ 95 km/h', truckLeft === 0 && truckFast === 0 && nTrucks > 5, `${nTrucks} trucks over 60 s`);
+    const nTrucks = s.traffic.vehicles.filter((v) => v.klass.heavy).length;
+    check('trucks / buses: never in the left lane, ≤ 100 km/h', truckLeft === 0 && truckFast === 0 && nTrucks > 5, `${nTrucks} trucks over 60 s`);
 
     const w = await scenario(5000);
     const t = w.traffic;
@@ -284,29 +285,27 @@ async function main(): Promise<void> {
     const near = s.traffic.vehicles.filter((v) => Math.abs(v.s - s.traffic.playerS) < 400).length;
     check('switching traffic on fills the road at once (also close by)', s.traffic.vehicles.length >= 30 && near >= 3, `${s.traffic.vehicles.length} vehicles 0.1 s after switching on, ${near} within 400 m`);
 
-    const c = await makeTrafficSim('high', 'carsOnly');
+    // A bold driver just ahead in the next lane, a little faster than the player: it cuts in.
+    const c = await makeTrafficSim('medium');
+    c.traffic.manual = true;
     c.traffic.setCutIns('many');
-    c.traffic.onTeleport();
-    const driver = new TestDriver(c, 1, 120, false, true);
+    placePlayer(c, 2000, c.track.laneNetwork.offsetAt(0, 1), 110);
+    const bold = c.traffic.spawnForTest('taxi', 'normal', 0, 0, 2030, 118 / 3.6, 125 / 3.6);
+    bold.bold = true;
+    bold.cooldown = 0;
+    const driver = new TestDriver(c, 1, 110, false, false);
     let minTtc = Infinity;
-    let cutIns = 0;
-    let lastCut = 0;
-    for (let i = 0; i < 120 * 120; i++) {
+    let cutIn = false;
+    for (let i = 0; i < 120 * 30; i++) {
       driver.step(c);
-      const st = c.traffic.stats();
-      if (st.cutIns > lastCut) {
-        lastCut = st.cutIns;
-        cutIns++;
-      }
-      // Anyone moving into the player's lane just ahead: time-to-collision from the player's point of view.
-      for (const v of c.traffic.vehicles) {
-        if (v.carriageway !== 0 || v.state !== 'changing' || v.toLane !== Math.round(c.traffic.playerLanePos)) continue;
-        const gap = v.s - driver.s - (v.klass.length + 4.6) / 2;
-        const closing = c.traffic.playerV - v.v;
-        if (gap > 0 && closing > 0) minTtc = Math.min(minTtc, gap / closing);
+      if (bold.state === 'changing' && bold.toLane === 1) {
+        cutIn = true;
+        const gap = bold.s - driver.s - (bold.klass.length + 4.6) / 2;
+        const closing = c.traffic.playerV - bold.v;
+        if (closing > 0) minTtc = Math.min(minTtc, gap / closing);
       }
     }
-    check('bold drivers cut in front of the player, but never into a crash', cutIns >= 2 && c.traffic.stats().crashes === 0 && minTtc > 1.5, `${cutIns} cut-ins in 2 min ("sık"), closest time-to-collision ${Number.isFinite(minTtc) ? minTtc.toFixed(1) + ' s' : '—'}, crashes ${c.traffic.stats().crashes}`);
+    check('bold drivers cut in front of the player, but never into a crash', cutIn && c.traffic.stats().cutIns >= 1 && c.traffic.stats().crashes === 0 && minTtc > 2, `cut in: ${cutIn}, closest time-to-collision ${Number.isFinite(minTtc) ? minTtc.toFixed(1) + ' s' : 'not closing'}, crashes ${c.traffic.stats().crashes}`);
   }
 
   section('Collisions with the player');

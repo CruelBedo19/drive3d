@@ -125,10 +125,14 @@ export const TRAFFIC_DENSITY_STEPS: readonly TrafficDensity[] = ['off', 'low', '
 export const TRAFFIC_DENSITY_LABELS: Record<TrafficDensity, string> = { off: 'Kapalı', low: 'Düşük', medium: 'Orta', high: 'Yüksek', veryHigh: 'Çok yüksek' };
 
 /** Class mix per variety setting (weights). */
+/**
+ * Only the modelled vehicles are spawned; the built-in low-poly classes (car, fastCar, van, truck)
+ * stay defined as fallbacks / for the headless tests but never appear in the game.
+ */
 export const TRAFFIC_VARIETY: Record<TrafficVariety, Partial<Record<TrafficClassId, number>>> = {
-  mixed: { car: 0.3, fastCar: 0.12, van: 0.06, truck: 0.1, taxi: 0.1, police: 0.05, postvan: 0.06, ambulance: 0.03, citybus: 0.04, schoolbus: 0.02, garbageTruck: 0.03, serviceTruck: 0.04, towTruck: 0.03, fireTruck: 0.02 },
-  carsOnly: { car: 0.42, fastCar: 0.2, taxi: 0.18, police: 0.08, van: 0.04, postvan: 0.05, ambulance: 0.03 },
-  heavy: { car: 0.22, fastCar: 0.06, van: 0.06, truck: 0.22, taxi: 0.06, postvan: 0.06, citybus: 0.08, schoolbus: 0.04, garbageTruck: 0.06, serviceTruck: 0.05, towTruck: 0.05, fireTruck: 0.04 },
+  mixed: { taxi: 0.24, police: 0.14, postvan: 0.12, ambulance: 0.06, serviceTruck: 0.1, citybus: 0.09, schoolbus: 0.05, garbageTruck: 0.07, towTruck: 0.07, fireTruck: 0.06 },
+  carsOnly: { taxi: 0.42, police: 0.28, postvan: 0.14, ambulance: 0.08, serviceTruck: 0.08 },
+  heavy: { taxi: 0.14, police: 0.08, postvan: 0.1, ambulance: 0.05, serviceTruck: 0.1, citybus: 0.15, schoolbus: 0.08, garbageTruck: 0.11, towTruck: 0.1, fireTruck: 0.09 },
 };
 
 export const TRAFFIC = {

@@ -45,7 +45,7 @@ interface ClassMeshes {
   slots: TrafficVehicle[];
 }
 
-/** Beyond this distance a prepared model (7-12k triangles) is drawn as its low-poly stand-in. */
+/** Beyond this distance a class with a `far` set is drawn with it (none today: models are drawn everywhere). */
 const MODEL_LOD_DISTANCE = 220;
 
 /**
@@ -109,7 +109,8 @@ export class TrafficVisuals {
       const parts = klass.model ? trafficModel(klass.model) : undefined;
       if (parts && parts.length) {
         const near: DrawSet = { shape: null, bodies: parts.map((p) => mk(p.geometry, p.material, true, false)), lamps: [], head: null, tail: null, indLeft: null, indRight: null, painted: false, count: 0 };
-        this.classes.set(id, { lamps: modelLamps(id), near, far: shapeSet(id), slots: [] });
+        // Drawn as the model at every distance (no box stand-ins).
+        this.classes.set(id, { lamps: modelLamps(id), near, far: null, slots: [] });
       } else {
         const near = shapeSet(id);
         this.classes.set(id, { lamps: klass.model ? modelLamps(id) : near.shape!.lamps, near, far: null, slots: [] });
