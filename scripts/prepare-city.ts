@@ -26,15 +26,15 @@
  * `npm run prepare:city`
  */
 import { Document, NodeIO, type Accessor, type Material, type Mesh, type Node, type Primitive } from '@gltf-transform/core';
-import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { dedup, meshopt, prune, textureCompress } from '@gltf-transform/functions';
+import { ALL_EXTENSIONS, EXTMeshoptCompression } from '@gltf-transform/extensions';
+import { dedup, prune, quantize, reorder, textureCompress } from '@gltf-transform/functions';
 import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 import { createHash } from 'node:crypto';
 import { mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
-import { auditCity, type AuditPiece } from './lib/cityAnalysis';
+import { auditCity, type AuditPiece, type AuditResult } from './lib/cityAnalysis';
 import { DETAIL_OFFSET, cleanPrototype, offsetAlongNormals, type CleanupStats } from './lib/cityCleanup';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -274,7 +274,8 @@ async function main(): Promise<void> {
   console.log(`cleanup: removed ${cleanStats.removedDuplicates} duplicate, ${cleanStats.removedBackToBack} redundant back-to-back, ${cleanStats.removedBottoms} hidden bottom faces; ${cleanStats.offsetFaces} detail faces pushed ${DETAIL_OFFSET * 1000} mm`);
 
   // Between pieces: what is left after the per-prototype pass.
-  const between = auditCity(instances.map((i) => pieceOf(i)), cellOfXZ, (s) => console.log(`between pieces ${s}`), { collectPairs: true });
+  const betweenPieces = instances.map((i) => pieceOf(i));
+  const between = auditCity(betweenPieces, cellOfXZ, (s) => console.log(`between pieces ${s}`), { collectPairs: true });
   const pieceIdx = (t: number) => between.pieceOf[t];
   // (a) Placed detail pieces lying on bigger placed pieces: push the detail prototype out 4 mm (all its placements).
   const vol = (i: Instance) => Math.max(1e-6, (i.max[0] - i.min[0]) * (i.max[1] - i.min[1]) * (i.max[2] - i.min[2]));
@@ -290,53 +291,148 @@ async function main(): Promise<void> {
   for (const p of between.pairs) if (p.kind === 'likelyZFight' || p.kind === 'backToBack' || p.kind === 'safeDuplicate') markDetail(p.i, p.j);
   for (const [d, o] of between.dups) markDetail(d, o);
   // (a') Overlapping placed pieces the prototype offset can't separate (two copies of the same
-  // prototype sharing a face: stacked floors, wall modules end to end): the copies are coloured
-  // (overlapping ones differ) and copy level k is drawn grown by k × 3 mm per side, about its own
-  // centre, along each local axis (a flat piece is moved instead). Colliders keep the original matrix.
+  // prototype sharing faces: stacked floors, wall modules end to end, a house placed twice). The
+  // linked copies are coloured (linked ones differ) and copy level k is drawn moved by k steps along
+  // one direction chosen per group so that every conflicting face normal of the group gets a share of
+  // it (step 3…6 mm: ≥ 2.5 mm along each such normal).
+  // Colliders keep the original matrix. Called again with what the first drawn audit still finds.
   const SEPARATE = 0.003;
+  const MAX_MOVE = 0.01;
   const linked = new Map<Instance, Set<Instance>>();
-  const link = (ti: number, tj: number) => {
-    const a = instances[pieceIdx(ti)];
-    const b = instances[pieceIdx(tj)];
-    if (a === b || a.bake || b.bake) return;
-    const [small, big] = vol(a) < vol(b) ? [a, b] : [b, a];
-    if (small.proto !== big.proto && detailProtos.has(small.proto) && !detailProtos.has(big.proto)) return;
-    for (const [x, y] of [[a, b], [b, a]]) {
-      if (!linked.has(x)) linked.set(x, new Set());
-      linked.get(x)!.add(y);
-    }
-  };
-  for (const p of between.pairs) if (p.kind === 'likelyZFight' || p.kind === 'backToBack' || p.kind === 'safeDuplicate') link(p.i, p.j);
-  for (const [d, o] of between.dups) link(d, o);
+  const conflictNormals = new Map<Instance, number[]>();
   const copyLevel = new Map<Instance, number>();
-  for (const k of [...linked.keys()].sort((x, y) => linked.get(y)!.size - linked.get(x)!.size)) {
-    const used = new Set([...linked.get(k)!].map((n) => copyLevel.get(n)));
-    let s = 0;
-    while (used.has(s) && s < 2) s++;
-    copyLevel.set(k, s);
+  const extraMove = new Map<Instance, number[]>(); // world metres, on top of the level move
+  const DIRS: number[][] = [];
+  for (let k = 0; k < 400; k++) {
+    // Fibonacci half-sphere, pointing down: candidate move directions (a moved copy sinks into the
+    // ground by a few mm rather than lifting off it).
+    const y = -(1 - (k + 0.5) / 400);
+    const r = Math.sqrt(1 - y * y);
+    const phi = k * Math.PI * (3 - Math.sqrt(5));
+    DIRS.push([Math.cos(phi) * r, y, Math.sin(phi) * r]);
   }
+  const triNormal = (tris: Float32Array, local: number): number[] => {
+    const o = local * 9;
+    const ux = tris[o + 3] - tris[o], uy = tris[o + 4] - tris[o + 1], uz = tris[o + 5] - tris[o + 2];
+    const wx = tris[o + 6] - tris[o], wy = tris[o + 7] - tris[o + 1], wz = tris[o + 8] - tris[o + 2];
+    const n = [uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx];
+    const l = Math.hypot(n[0], n[1], n[2]) || 1;
+    return n.map((c) => c / l);
+  };
   let separated = 0;
-  for (const [inst, level] of copyLevel) {
-    if (level === 0 || !CLEANUP) continue;
-    const m = inst.m;
-    const p = inst.proto;
-    const d = SEPARATE * level;
-    const g = new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
-    for (let a = 0; a < 3; a++) {
-      const s = Math.hypot(m[a * 4], m[a * 4 + 1], m[a * 4 + 2]); // metres per local unit along this axis
-      const half = ((p.max[a] - p.min[a]) / 2) * s;
-      const c = (p.min[a] + p.max[a]) / 2;
-      if (half < 0.01) g[12 + a] = d / s;
-      else {
-        const k = 1 + d / half;
-        g[a * 5] = k;
-        g[12 + a] = c * (1 - k);
+  const separateCopies = (audit: AuditResult, pieces: AuditPiece[]): void => {
+    const link = (ti: number, tj: number) => {
+      const a = instances[audit.pieceOf[ti]];
+      const b = instances[audit.pieceOf[tj]];
+      if (a === b || a.bake || b.bake) return;
+      const [small, big] = vol(a) < vol(b) ? [a, b] : [b, a];
+      if (small.proto !== big.proto && detailProtos.has(small.proto) && !detailProtos.has(big.proto) && audit === between) return;
+      for (const [x, y] of [[a, b], [b, a]]) {
+        if (!linked.has(x)) linked.set(x, new Set());
+        linked.get(x)!.add(y);
+      }
+      const k = audit.pieceOf[ti];
+      const n = triNormal(pieces[k].tris, ti - audit.pieceStart[k]);
+      for (const x of [a, b]) {
+        if (!conflictNormals.has(x)) conflictNormals.set(x, []);
+        conflictNormals.get(x)!.push(...n);
+      }
+    };
+    for (const p of audit.pairs) if (p.kind === 'likelyZFight' || p.kind === 'backToBack' || p.kind === 'safeDuplicate') link(p.i, p.j);
+    for (const [d, o] of audit.dups) link(d, o);
+    // Colouring (first pass) / a pair still conflicting in the drawn audit: the smaller one moves up a level.
+    for (const k of [...linked.keys()].sort((x, y) => linked.get(y)!.size - linked.get(x)!.size)) {
+      if (copyLevel.has(k)) continue;
+      const used = new Set([...linked.get(k)!].map((n) => copyLevel.get(n)));
+      let s = 0;
+      while (used.has(s) && s < 2) s++;
+      copyLevel.set(k, s);
+    }
+    if (audit !== between) {
+      // Still conflicting: same level, the smaller goes a level up; different levels (the group's
+      // direction is nearly along those faces), the higher one gets an extra move across them.
+      const across = new Map<Instance, number[]>();
+      for (const p of audit.pairs) {
+        if (p.kind !== 'likelyZFight' && p.kind !== 'backToBack' && p.kind !== 'safeDuplicate') continue;
+        const a = instances[audit.pieceOf[p.i]];
+        const b = instances[audit.pieceOf[p.j]];
+        if (a === b || a.bake || b.bake) continue;
+        const la = copyLevel.get(a) ?? 0;
+        const lb = copyLevel.get(b) ?? 0;
+        if (la === lb) {
+          const small = vol(a) <= vol(b) ? a : b;
+          copyLevel.set(small, Math.min(2, la + 1));
+        } else {
+          const k = audit.pieceOf[p.i];
+          const hi = la > lb ? a : b;
+          if (!across.has(hi)) across.set(hi, []);
+          across.get(hi)!.push(...triNormal(pieces[k].tris, p.i - audit.pieceStart[k]));
+        }
+      }
+      for (const [inst, ns] of across) {
+        let best = DIRS[0];
+        let bestScore = -1;
+        for (const d of DIRS) {
+          let worst = 1;
+          for (let i = 0; i < ns.length && worst > bestScore; i += 3) worst = Math.min(worst, Math.abs(d[0] * ns[i] + d[1] * ns[i + 1] + d[2] * ns[i + 2]));
+          if (worst > bestScore) {
+            bestScore = worst;
+            best = d;
+          }
+        }
+        const prev = extraMove.get(inst) ?? [0, 0, 0];
+        const step = Math.min(0.006, Math.max(SEPARATE, 0.0025 / Math.max(bestScore, 1e-3)));
+        extraMove.set(inst, prev.map((c, a) => c + best[a] * step));
       }
     }
-    inst.draw = mul(m, g);
-    separated++;
-  }
-  console.log(`overlapping copies: ${linked.size} placements linked, ${separated} drawn ${SEPARATE * 1000}/${SEPARATE * 2000} mm grown (colliders unchanged)`);
+    // One move direction per group of linked copies.
+    const dirOf = new Map<Instance, { u: number[]; step: number }>();
+    const none = { u: [0, -1, 0], step: 0 };
+    for (const start of linked.keys()) {
+      if (dirOf.has(start)) continue;
+      const group: Instance[] = [];
+      const stack = [start];
+      dirOf.set(start, none);
+      while (stack.length) {
+        const x = stack.pop()!;
+        group.push(x);
+        for (const y of linked.get(x) ?? []) if (!dirOf.has(y)) {
+          dirOf.set(y, none);
+          stack.push(y);
+        }
+      }
+      const ns = group.flatMap((g) => conflictNormals.get(g) ?? []);
+      let best = DIRS[0];
+      let bestScore = -1;
+      for (const d of DIRS) {
+        let worst = 1;
+        for (let i = 0; i < ns.length && worst > bestScore; i += 3) worst = Math.min(worst, Math.abs(d[0] * ns[i] + d[1] * ns[i + 1] + d[2] * ns[i + 2]));
+        if (worst > bestScore) {
+          bestScore = worst;
+          best = d;
+        }
+      }
+      // Every conflicting face of the group ends up ≥ 2.5 mm from its twin; 3…6 mm per level.
+      const step = Math.min(0.006, Math.max(SEPARATE, 0.0025 / Math.max(bestScore, 1e-3)));
+      for (const g of group) dirOf.set(g, { u: best, step });
+    }
+    separated = 0;
+    for (const [inst, level] of copyLevel) {
+      inst.draw = undefined;
+      if (level === 0 || !CLEANUP) continue;
+      const { u, step } = dirOf.get(inst)!;
+      const drawn = Float64Array.from(inst.m);
+      const extra = extraMove.get(inst) ?? [0, 0, 0];
+      const move = [0, 1, 2].map((a) => u[a] * step * level + extra[a]);
+      const len = Math.hypot(move[0], move[1], move[2]);
+      const k = len > MAX_MOVE ? MAX_MOVE / len : 1; // never more than 1 cm
+      for (let a = 0; a < 3; a++) drawn[12 + a] += move[a] * k;
+      inst.draw = drawn;
+      separated++;
+    }
+    console.log(`overlapping copies: ${linked.size} placements linked, ${separated} drawn moved a few mm (colliders unchanged)`);
+  };
+  separateCopies(between, betweenPieces);
   if (CLEANUP) for (const p of detailProtos) offsetAlongNormals(p.mesh, DETAIL_OFFSET, Math.hypot(firstOf.get(p)!.m[0], firstOf.get(p)!.m[1], firstOf.get(p)!.m[2]));
   // (b) Ground surface hierarchy for baked pieces: ground → road → parking / floor → markings, 3 mm per layer,
   // plus 1 mm sub-layers so overlapping pieces of the same layer differ too.
@@ -400,6 +496,7 @@ async function main(): Promise<void> {
   const mapTris: { tri: number[]; colour: [number, number, number] }[] = [];
   const renderBaked = new Map<number, number[]>(); // instance → drawn world triangles (final audit)
   const renderBakedMats = new Map<number, { start: number; name: string }[]>();
+  const bakeRefs = new Map<number, { b: CellBake; o: number }[]>(); // instance → where each drawn triangle went
   const v = [0, 0, 0];
   const nrm = [0, 0, 0];
   const t2 = [0, 0];
@@ -411,6 +508,8 @@ async function main(): Promise<void> {
     const drawnMats: { start: number; name: string }[] = [];
     renderBaked.set(ii, drawn);
     renderBakedMats.set(ii, drawnMats);
+    const refs: { b: CellBake; o: number }[] = [];
+    bakeRefs.set(ii, refs);
     const level = sub.get(ii) ?? 0;
     let gt = between.pieceStart[ii];
     for (const prim of inst.proto.mesh.listPrimitives()) {
@@ -495,6 +594,7 @@ async function main(): Promise<void> {
         if (!cell) bakes.set(ck, (cell = new Map()));
         let b = cell.get(mat);
         if (!b) cell.set(mat, (b = new CellBake()));
+        refs.push({ b, o: b.pos.length });
         b.pos.push(...tri);
         b.nor.push(...nn);
         b.uv.push(...uu);
@@ -505,14 +605,131 @@ async function main(): Promise<void> {
   });
   console.log(`baked ${bakedTris} ground / large-piece triangles into ${bakes.size} cells`);
 
-  // Audit of what is drawn now (placed pieces from the cleaned prototypes, baked pieces as drawn).
-  const after = auditCity(
-    instances.map((i, k) => (i.bake ? { ...pieceOf(i, renderBaked.get(k)), materials: renderBakedMats.get(k)! } : pieceOf(i, undefined, true))),
-    cellOfXZ,
-    (s) => console.log(`after ${s}`),
-  );
+  // Audit of what is drawn now (placed pieces from the cleaned prototypes, baked pieces as drawn),
+  // then one more round on what is still left, and the final audit.
+  const drawnPieces = () => instances.map((i, k) => (i.bake ? { ...pieceOf(i, renderBaked.get(k)), materials: renderBakedMats.get(k)! } : pieceOf(i, undefined, true)));
+  const residual = { rounds: 0, bakedMoved: 0, prototypesCleanedAgain: 0, copiesMoved: 0 };
+  for (let round = 1; CLEANUP && round <= 5; round++) {
+    const firstPieces = drawnPieces();
+    const first = auditCity(firstPieces, cellOfXZ, (s) => console.log(`round ${round}: ${s}`), { collectPairs: true });
+    const conflicts = first.pairs.filter((p) => p.kind === 'likelyZFight' || p.kind === 'backToBack' || p.kind === 'safeDuplicate').length + first.dups.length;
+    if (conflicts === 0) break;
+    residual.rounds = round;
+    // (1) Placed copies still conflicting: linked / moved up a level.
+    separateCopies(first, firstPieces);
+    residual.copiesMoved = separated;
+    // (2) Baked triangles still on another face: 2.5 mm apart. Beside a placed piece the baked one goes
+    // behind it (ground under a floor, a baked garage wall behind the building's wall); between two baked
+    // pieces the smaller keeps its side (or goes to the front) of the larger; back-to-back: along its normal.
+    const GAP = 0.0025;
+    const tri = (t: number) => {
+      const k = first.pieceOf[t];
+      return { k, local: t - first.pieceStart[k], tris: firstPieces[k].tris };
+    };
+    const moves = new Map<number, number[]>();
+    const consider = (kind: string, i: number, j: number) => {
+      const A = instances[first.pieceOf[i]];
+      const B = instances[first.pieceOf[j]];
+      if (!A.bake && !B.bake) return;
+      const both = A.bake && B.bake; // also two faces of one baked piece
+      const [mv, ref] = both ? (first.areas[i] <= first.areas[j] ? [i, j] : [j, i]) : A.bake ? [i, j] : [j, i];
+      const m = tri(mv);
+      const r = tri(ref);
+      let disp: number[];
+      if (kind === 'backToBack') {
+        const n = triNormal(m.tris, m.local);
+        disp = n.map((c) => c * GAP * (both ? 1 : -1));
+      } else {
+        const n = triNormal(r.tris, r.local);
+        const mo = m.local * 9;
+        const ro = r.local * 9;
+        let sd = 0;
+        for (let a = 0; a < 3; a++) sd += ((m.tris[mo + a] + m.tris[mo + 3 + a] + m.tris[mo + 6 + a]) / 3 - r.tris[ro + a]) * n[a];
+        const target = !both || sd < -0.0002 ? -GAP : GAP;
+        disp = n.map((c) => c * (target - sd));
+      }
+      const prev = moves.get(mv);
+      if (!prev || Math.hypot(...disp) > Math.hypot(...prev)) moves.set(mv, disp);
+    };
+    for (const p of first.pairs) if (p.kind === 'likelyZFight' || p.kind === 'backToBack' || p.kind === 'safeDuplicate') consider(p.kind, p.i, p.j);
+    for (const [d, o] of first.dups) consider('duplicate', d, o);
+    for (const [t, disp] of moves) {
+      const { k, local } = tri(t);
+      const ref = bakeRefs.get(k)![local];
+      const drawn = renderBaked.get(k)!;
+      for (let v = 0; v < 3; v++) for (let a = 0; a < 3; a++) {
+        ref.b.pos[ref.o + v * 3 + a] += disp[a];
+        drawn[local * 9 + v * 3 + a] += disp[a];
+      }
+    }
+    residual.bakedMoved += moves.size;
+    // (3) Faces of one placed prototype still on each other: that prototype's rules once more.
+    const again = new Set<Proto>();
+    for (const p of first.pairs) {
+      if (p.kind !== 'likelyZFight' && p.kind !== 'backToBack' && p.kind !== 'safeDuplicate') continue;
+      const A = instances[first.pieceOf[p.i]];
+      if (A === instances[first.pieceOf[p.j]] && !A.bake) again.add(A.proto);
+    }
+    for (const p of again) {
+      const inst = firstOf.get(p)!;
+      const a = auditCity([pieceOf(inst)], cellOfXZ, () => {}, { collectPairs: true });
+      cleanPrototype(p.mesh, a, Math.hypot(inst.m[0], inst.m[1], inst.m[2]), () => false, cleanStats, true);
+    }
+    residual.prototypesCleanedAgain += again.size;
+    console.log(`round ${round}: ${conflicts} conflicts; ${separated} copies drawn apart, ${moves.size} baked triangles moved ${GAP * 1000} mm clear, ${again.size} prototypes cleaned again`);
+  }
+  {
+    const moved = instances.filter((i) => i.draw).map((i) => Math.hypot(i.draw![12] - i.m[12], i.draw![13] - i.m[13], i.draw![14] - i.m[14]));
+    const up = instances.filter((i) => i.draw).map((i) => i.draw![13] - i.m[13]);
+    console.log(`copies moved: ${moved.length}, largest ${(Math.max(0, ...moved) * 1000).toFixed(1)} mm, over 1 cm ${moved.filter((d) => d > 0.01).length}, highest lift ${(Math.max(0, ...up) * 1000).toFixed(1)} mm`);
+  }
+  const afterPieces = drawnPieces();
+  const after = auditCity(afterPieces, cellOfXZ, (s) => console.log(`after ${s}`), { collectPairs: true });
+  {
+    // What is left, by kind and place (top groups in the log).
+    const tally = new Map<string, number>();
+    const add = (k: string) => tally.set(k, (tally.get(k) ?? 0) + 1);
+    const ny = (t: number) => {
+      const k = after.pieceOf[t];
+      const tr = afterPieces[k].tris;
+      const o = (t - after.pieceStart[k]) * 9;
+      const ux = tr[o + 3] - tr[o], uy = tr[o + 4] - tr[o + 1], uz = tr[o + 5] - tr[o + 2];
+      const wx = tr[o + 6] - tr[o], wy = tr[o + 7] - tr[o + 1], wz = tr[o + 8] - tr[o + 2];
+      const n = uz * wx - ux * wz;
+      return n / (Math.hypot(uy * wz - uz * wy, n, ux * wy - uy * wx) || 1);
+    };
+    const matOf = (t: number) => {
+      const k = after.pieceOf[t];
+      const local = t - after.pieceStart[k];
+      let name = '';
+      for (const m of afterPieces[k].materials) if (m.start <= local) name = m.name;
+      return name;
+    };
+    const describe = (kind: string, i: number, j: number) => {
+      const a = instances[after.pieceOf[i]];
+      const b = instances[after.pieceOf[j]];
+      const dir = (t: number) => (ny(t) > 0.7 ? 'up' : ny(t) < -0.7 ? 'down' : 'side');
+      if (a === b) add(`${kind} self ${a.bake ? 'baked' : 'placed'} ${a.proto.name} ${dir(i)}`);
+      else if (a.bake && b.bake) add(`${kind} baked-baked ${dir(i)}/${dir(j)} ${[matOf(i), matOf(j)].sort().join('+')}`);
+      else if (a.bake || b.bake) {
+        const [bk, pl, tb, tp] = a.bake ? [a, b, i, j] : [b, a, j, i];
+        add(`${kind} baked-placed ${dir(tb)}/${dir(tp)} ${matOf(tb)} + ${pl.proto.name}`);
+        void bk;
+      } else add(`${kind} placed-placed ${a.proto === b.proto ? 'same' : 'diff'} L${copyLevel.get(a) ?? '-'}/${copyLevel.get(b) ?? '-'} ${dir(i)} ${[a.proto.name, b.proto.name].sort().join(' + ')}`);
+    };
+    for (const p of after.pairs) if (p.kind === 'likelyZFight' || p.kind === 'backToBack' || p.kind === 'safeDuplicate') describe(p.kind, p.i, p.j);
+    for (const [d, o, same] of after.dups) if (!same) describe('dupDiffMat', d, o);
+    const groups = new Map<string, number>();
+    for (const [k, n] of tally) {
+      const g = k.split(' ').slice(0, 2).join(' ');
+      groups.set(g, (groups.get(g) ?? 0) + n);
+    }
+    console.log('left:', JSON.stringify([...groups].sort((x, y) => y[1] - x[1])));
+    console.log([...tally].sort((x, y) => y[1] - x[1]).slice(0, 25).map(([k, n]) => `  ${n}\t${k}`).join('\n'));
+    if (process.argv.includes('--diag')) return;
+  }
   mkdirSync(OUT, { recursive: true });
-  writeFileSync(join(OUT, 'city-audit.json'), JSON.stringify({ before: before.report, after: after.report, cleanup: cleanStats, hierarchy: { subLayered: sub.size, lowered: lower.size, skippedGroundDuplicates: skip.size, bakedPushOut: pushOut.size, detailPrototypes: detailProtos.size, separatedCopies: separated } }, null, 1));
+  writeFileSync(join(OUT, 'city-audit.json'), JSON.stringify({ before: before.report, after: after.report, cleanup: cleanStats, hierarchy: { subLayered: sub.size, lowered: lower.size, skippedGroundDuplicates: skip.size, bakedPushOut: pushOut.size, detailPrototypes: detailProtos.size, separatedCopies: separated }, residual }, null, 1));
   {
     // Debug overlay: what is left after the cleanup.
     const kinds = Object.keys(after.debug) as (keyof typeof after.debug)[];
@@ -922,7 +1139,16 @@ async function main(): Promise<void> {
     `${JSON.stringify({ name: 'Şehir', width: +((bmax[0] - bmin[0]) / 1000).toFixed(2), depth: +((bmax[2] - bmin[2]) / 1000).toFixed(2), elevation: Math.round(bmax[1] - bmin[1]), zones: teleports.length, outline: hull.flat().map((v) => Math.round(v)) })}\n`,
   );
 
-  await out.transform(prune(), dedup(), textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024] }), meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
+  // meshopt compression; positions stay float: quantised to the mesh's extent (14 bits ≈ 15 mm in a
+  // 250 m ground cell) they would erase the few-mm layer offsets of the cleanup.
+  await out.transform(
+    prune(),
+    dedup(),
+    textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024] }),
+    reorder({ encoder: MeshoptEncoder, target: 'size' }),
+    quantize({ pattern: /^(?!POSITION$).*/, quantizeNormal: 10, quantizeTexcoord: 12 }),
+  );
+  out.createExtension(EXTMeshoptCompression).setRequired(true).setEncoderOptions({ method: EXTMeshoptCompression.EncoderMethod.QUANTIZE });
   await io.write(join(OUT, 'city.glb'), out);
 
   const size = (f: string) => (statSync(join(OUT, f)).size / 1e6).toFixed(1);

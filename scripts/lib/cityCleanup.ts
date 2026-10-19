@@ -55,7 +55,7 @@ export interface CleanupStats {
  * prototype alone (world metres); `scale` = metres per local unit;
  * `down(triangle)` says whether a triangle is a bottom face at the lowest level.
  */
-export function cleanPrototype(mesh: Mesh, audit: AuditResult, scale: number, isBottom: (t: number) => boolean, stats: CleanupStats): void {
+export function cleanPrototype(mesh: Mesh, audit: AuditResult, scale: number, isBottom: (t: number) => boolean, stats: CleanupStats, split = false): void {
   const map = triangleMap(mesh);
   const n = map.prim.length;
   const remove = new Uint8Array(n);
@@ -87,6 +87,35 @@ export function cleanPrototype(mesh: Mesh, audit: AuditResult, scale: number, is
       remove[t] = 1;
       stats.removedBottoms++;
     }
+  }
+  // Second round (`split`): a pushed face gets its own corners first, so a neighbour sharing them
+  // (an overlapping face of the same mesh) stays where it is.
+  if (split) for (const prim of mesh.listPrimitives()) {
+    const I = prim.getIndices()!.getArray()!;
+    const extra: number[] = [];
+    let next = prim.getAttribute('POSITION')!.getCount();
+    const out = Uint32Array.from(I);
+    for (let t = 0; t < n; t++) {
+      if (map.prim[t] !== prim || !push[t] || remove[t]) continue;
+      const s = map.slot[t] * 3;
+      for (let c = 0; c < 3; c++) {
+        extra.push(I[s + c]);
+        out[s + c] = next++;
+      }
+    }
+    if (!extra.length) continue;
+    for (const sem of prim.listSemantics()) {
+      const acc = prim.getAttribute(sem)!;
+      const size = acc.getElementSize();
+      const src = acc.getArray()!;
+      const grown = new (src.constructor as Float32ArrayConstructor)(src.length + extra.length * size);
+      grown.set(src);
+      extra.forEach((v, k) => {
+        for (let c = 0; c < size; c++) grown[src.length + k * size + c] = src[v * size + c];
+      });
+      acc.setArray(grown);
+    }
+    prim.getIndices()!.setArray(out);
   }
   // Per-primitive edit: displaced vertices (max along each pushed face normal), filtered indices.
   for (const prim of mesh.listPrimitives()) {
