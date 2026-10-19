@@ -80,8 +80,6 @@ export class Game implements AdminHost {
   readonly trackId: TrackId;
   /** Simulation speed (admin slow motion). 1 = real time. */
   timeScale = 1;
-  /** Admin pause (P), separate from the pause menu. */
-  paused = false;
 
   private readonly ctx: SessionContext;
   private readonly car: CarEntry;
@@ -123,6 +121,8 @@ export class Game implements AdminHost {
     const track = createTrack(options.track, physics.world, options.seed);
     renderer.scene.add(track.group);
     renderer.setFog(track.fog?.near ?? DEFAULT_FOG.near, track.fog?.far ?? DEFAULT_FOG.far);
+    renderer.camera.near = track.cameraNear ?? 0.05;
+    renderer.camera.updateProjectionMatrix();
 
     // In admin mode the last working tune for this car comes back after a reload.
     const saved = ctx.admin ? TuningStore.loadWorking(this.carId) : null;
@@ -188,7 +188,7 @@ export class Game implements AdminHost {
       const k = s.controls;
       this.hud.setHelp(
         `${keyLabel(k.throttle)}/${keyLabel(k.brake)} gaz-fren · ${keyLabel(k.left)}/${keyLabel(k.right)} direksiyon · ${keyLabel(k.handbrake)} el freni · ` +
-          `${keyLabel(k.camera)} kamera · ${keyLabel(k.lookBack)} arkaya bak · ${keyLabel(k.headlights)} far · ${this.traffic ? `${keyLabel(k.trafficDensity)} trafik · ` : ''}${keyLabel(k.recover)} düzelt · ${keyLabel(k.respawn)} başa dön · Esc duraklat`,
+          `${keyLabel(k.camera)} kamera · ${keyLabel(k.lookBack)} arkaya bak · ${keyLabel(k.headlights)} far · ${keyLabel(k.map)} harita · ${this.traffic ? `${keyLabel(k.trafficDensity)} trafik · ` : ''}${keyLabel(k.recover)} düzelt · ${keyLabel(k.respawn)} başa dön · Esc duraklat`,
       );
     });
 
@@ -232,10 +232,6 @@ export class Game implements AdminHost {
     this.resetView();
   }
 
-  stepOnce(): void {
-    this.paused = true;
-    this.sim.requestStep();
-  }
 
   toggleDebugPanel(): boolean {
     this.debug?.toggle();
@@ -244,6 +240,14 @@ export class Game implements AdminHost {
 
   trackDebug(): Record<string, string | number> | null {
     return this.sim.track.debugInfo?.() ?? null;
+  }
+
+  trackDebugLayers(): { id: string; label: string; on: boolean }[] {
+    return this.sim.track.debugLayers?.() ?? [];
+  }
+
+  setTrackDebugLayer(id: string, on: boolean): void {
+    this.sim.track.setDebugLayer?.(id, on);
   }
 
   /** F2: rebuild a procedural road from another seed and put the car at its start. */
@@ -425,10 +429,10 @@ export class Game implements AdminHost {
       this.updateLabel();
     }
 
-    const simDt = running && !this.paused ? dt * this.timeScale : 0;
+    const simDt = running ? dt * this.timeScale : 0;
     this.sim.advance(simDt, running);
-    // Paused (admin single-stepping or pause menu): show the newest physics state.
-    const alpha = !running || this.paused ? 1 : this.sim.alpha;
+    // Pause menu: show the newest physics state.
+    const alpha = !running ? 1 : this.sim.alpha;
     this.vehicle.render(alpha);
 
     const camera = this.ctx.renderer.camera;
@@ -543,13 +547,12 @@ export class Game implements AdminHost {
     const c = this.settings.controls;
     if (this.admin) {
       if (input.wasPressed('F2')) this.admin.toggle();
-      if (input.wasPressed('KeyP')) this.admin.handleKey('KeyP');
-      if (input.wasPressed('Period')) this.admin.handleKey('Period');
     }
     if (pressedBinding(input, c.headlights)) {
       this.headlights.toggle();
       this.hud.showToast(`Farlar: ${this.headlights.on ? 'açık' : 'kapalı'}${this.headlights.mode === 'auto' ? ' (otomatik geçici olarak değişti)' : ''}`);
     }
+    if (pressedBinding(input, c.map)) this.hud.setMapExpanded(!this.hud.mapExpanded);
     if (this.traffic && pressedBinding(input, c.trafficDensity)) {
       // Step the density without leaving the drive (saved like the settings screen does).
       const steps = TRAFFIC_DENSITY_STEPS;

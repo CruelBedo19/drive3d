@@ -4,6 +4,7 @@ import { STRAIGHT_LENGTH, TRACK_WIDTH, TURN_RADIUS, stadiumLine } from './TestTr
 import nordschleifeData from './tracks/nordschleife.json';
 import { AUTOBAHN } from '../config/tracks';
 import { RoadGenerator } from './autobahn/RoadGenerator';
+import cityInfo from './tracks/city-info.json';
 
 /** What the map selection screen shows for a track, without building it. */
 export interface TrackInfo {
@@ -91,8 +92,26 @@ function autobahnInfo(): TrackInfo {
   };
 }
 
+/** The city: summary written by scripts/prepare-city.ts (the outline is the streets' convex hull). */
+function cityTrackInfo(): TrackInfo {
+  return {
+    id: 'city',
+    name: 'Şehir',
+    type: 'Açık dünya şehir',
+    environment: `${cityInfo.width} × ${cityInfo.depth} km · ${cityInfo.zones} bölge · sahil, ada, tepeler`,
+    description: 'Gökdelenli merkez, ada, liman, sahil ve tepelerle açık dünya şehir. Şimdilik trafiksiz.',
+    length: Infinity,
+    elevation: cityInfo.elevation,
+    corners: 0,
+    tags: ['Açık dünya', 'Şehir', 'Trafiksiz', 'CC BY-NC'],
+    outline: new Float32Array(cityInfo.outline),
+    closed: true,
+    width: 20,
+  };
+}
+
 /** Selectable tracks in menu order. Stats are read from the track data, not typed in. */
-export const TRACK_CATALOG: readonly TrackInfo[] = [TEST_INFO, nordschleifeInfo(), autobahnInfo()];
+export const TRACK_CATALOG: readonly TrackInfo[] = [TEST_INFO, nordschleifeInfo(), autobahnInfo(), cityTrackInfo()];
 
 export function trackInfo(id: string): TrackInfo | undefined {
   return TRACK_CATALOG.find((t) => t.id === id);

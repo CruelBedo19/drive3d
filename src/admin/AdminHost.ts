@@ -22,8 +22,6 @@ export interface AdminHost {
   configEdited(): void;
   teleport(id: string): void;
   timeScale: number;
-  paused: boolean;
-  stepOnce(): void;
   toggleDebugPanel(): boolean;
   toggleColliders(): boolean;
   /** Live weather of the session (World / Weather tab), if any. */
@@ -31,6 +29,9 @@ export interface AdminHost {
   /** Procedural track numbers (null for static maps). */
   trackDebug?(): Record<string, string | number> | null;
   regenerateTrack?(seed: number): void;
+  /** Track debug overlays (city audit findings, chunk borders). */
+  trackDebugLayers?(): { id: string; label: string; on: boolean }[];
+  setTrackDebugLayer?(id: string, on: boolean): void;
   /** AI traffic numbers and debug drawing (worlds with traffic). */
   trafficDebug?(): { stats: Record<string, string | number>; selected: Record<string, string | number> | null } | null;
   trafficSelectNext?(): void;

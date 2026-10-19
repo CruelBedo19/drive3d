@@ -421,8 +421,9 @@ export class AutobahnTrack implements Track {
 
   /** Road around the player for the minimap (the road is endless: only the loaded stretch is drawn). */
   private buildMapData(): MapData {
-    const s0 = Math.max(0, this.sNear - 1500);
-    const s1 = this.sNear + 3000;
+    // Long enough for the big map (M) too.
+    const s0 = Math.max(0, this.sNear - 3000);
+    const s1 = this.sNear + 4500;
     const line = (fn: (s: number) => [number, number] | null, a: number, b: number, step: number): Float32Array => {
       const pts: number[] = [];
       for (let s = a; s <= b; s += step) {

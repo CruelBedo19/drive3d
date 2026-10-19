@@ -42,7 +42,6 @@ export class AdminPanel {
   private readonly presetList: HTMLElement;
   private readonly setupButtons = new Map<SetupId, HTMLButtonElement>();
   private readonly timeButtons = new Map<number, HTMLButtonElement>();
-  private readonly pauseButton: HTMLButtonElement;
   private tab: 'tune' | 'test' | 'world' = 'tune';
   private weatherPane: WeatherAdminPane | null = null;
   private mapPane: MapAdminPane | null = null;
@@ -93,10 +92,6 @@ export class AdminPanel {
         <div class="admin-block">
           <label class="admin-label">Zaman</label>
           <div class="admin-seg admin-time"></div>
-          <div class="admin-actions">
-            <button data-act="pause">Duraklat (P)</button>
-            <button data-act="step">Tek adım (.)</button>
-          </div>
         </div>
         <div class="admin-block">
           <label class="admin-label">Ölçümler <button class="admin-mini" data-act="measure-reset">sıfırla</button></label>
@@ -117,7 +112,7 @@ export class AdminPanel {
       <section class="admin-body" data-pane="world" hidden></section>`;
     parent.appendChild(this.root);
     if (host.trackDebug && host.regenerateTrack) {
-      const pane = new MapAdminPane({ trackDebug: () => host.trackDebug?.() ?? null, regenerateTrack: (seed) => host.regenerateTrack?.(seed) });
+      const pane = new MapAdminPane({ trackDebug: () => host.trackDebug?.() ?? null, regenerateTrack: (seed) => host.regenerateTrack?.(seed), trackDebugLayers: () => host.trackDebugLayers?.() ?? [], setTrackDebugLayer: (id, on) => host.setTrackDebugLayer?.(id, on) });
       if (pane.available) {
         this.mapPane = pane;
         this.q('[data-pane="world"]').appendChild(pane.root);
@@ -138,7 +133,6 @@ export class AdminPanel {
     this.statusEl = this.q('.admin-status');
     this.measureEl = this.q('.admin-measure');
     this.presetList = this.q('.admin-presets');
-    this.pauseButton = this.q<HTMLButtonElement>('[data-act="pause"]');
     this.q('.admin-graph-wrap').appendChild(this.graph.canvas);
 
     this.buildCarSelect();
@@ -185,7 +179,7 @@ export class AdminPanel {
     g[3] = t.brake;
     g[4] = Math.max(w[2].combinedSlip, w[3].combinedSlip);
     g[5] = (v.physics.linearVelocity.length() * Math.abs(v.physics.angularVelocity.y)) / 9.81;
-    if (!this.host.paused) this.graph.push(dt * this.host.timeScale, g);
+    this.graph.push(dt * this.host.timeScale, g);
 
     if (this.statusTimer > 0) {
       this.statusTimer -= dt;
@@ -382,12 +376,6 @@ export class AdminPanel {
       case 'import':
         this.importJson();
         break;
-      case 'pause':
-        this.togglePause();
-        break;
-      case 'step':
-        this.host.stepOnce();
-        break;
       case 'measure-reset':
         this.host.measurements.reset();
         this.renderMeasurements();
@@ -400,12 +388,6 @@ export class AdminPanel {
         break;
     }
   };
-
-  /** Keyboard shortcuts that only make sense with admin mode on. */
-  handleKey(code: string): void {
-    if (code === 'KeyP') this.togglePause();
-    if (code === 'Period') this.host.stepOnce();
-  }
 
   private edit(param: TuningParam, value: unknown): void {
     setPath(this.host.vehicle.config, param.path, value);
@@ -501,12 +483,6 @@ export class AdminPanel {
     this.host.applyConfig(merged);
     this.persist();
     this.syncInputs();
-  }
-
-  private togglePause(): void {
-    this.host.paused = !this.host.paused;
-    this.pauseButton.textContent = this.host.paused ? 'Devam (P)' : 'Duraklat (P)';
-    this.pauseButton.classList.toggle('on', this.host.paused);
   }
 
   private setTimeScale(scale: number): void {

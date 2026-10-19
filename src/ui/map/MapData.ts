@@ -31,6 +31,8 @@ export interface MapData {
   markers: readonly MapMarker[];
   /** Metres from the player to the minimap edge at standstill (zooms out a bit with speed). */
   viewRadius: number;
+  /** A top-down picture of the map under the paths (open-world city), with its world rectangle. */
+  image?: { url: string; minX: number; minZ: number; maxX: number; maxZ: number };
 }
 
 /** Anything the minimap can show; implemented by tracks today. */

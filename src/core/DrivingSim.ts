@@ -32,7 +32,6 @@ export class DrivingSim {
   readonly systems: SimSystem[] = [];
 
   private accumulator = 0;
-  private stepRequested = false;
   private readonly respawnRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
   private readonly _pos = new THREE.Vector3();
 
@@ -48,11 +47,6 @@ export class DrivingSim {
     return this.accumulator / this.physics.fixedDt;
   }
 
-  /** Runs one fixed step on the next advance(), even with dt = 0 (admin single step). */
-  requestStep(): void {
-    this.stepRequested = true;
-  }
-
   /**
    * Advances simulated time by dt (already scaled). `running` false (pause,
    * menus): nothing is simulated and the accumulated time is dropped.
@@ -65,10 +59,6 @@ export class DrivingSim {
     }
     const fixedDt = this.physics.fixedDt;
     this.accumulator += dt;
-    if (this.stepRequested) {
-      this.accumulator = Math.max(this.accumulator, fixedDt);
-      this.stepRequested = false;
-    }
     let steps = 0;
     while (this.accumulator >= fixedDt && steps < GAME_CONFIG.physics.maxStepsPerFrame) {
       this.driving.update(fixedDt);

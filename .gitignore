@@ -1,3 +1,7 @@
 node_modules
 dist
 *.local
+
+# Big downloaded source models (prepared copies live in public/assets/); the city source is 198 MB,
+# over GitHub's 100 MB file limit. Re-download it to run npm run prepare:city.
+assets-src/maps/

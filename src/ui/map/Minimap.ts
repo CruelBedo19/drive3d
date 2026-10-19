@@ -55,6 +55,7 @@ export function arrowAngle(v: Pick<MinimapView, 'yaw' | 'mode'>): number {
 
 const STYLE = {
   background: 'rgba(12, 14, 18, 0.62)',
+  backgroundBig: 'rgba(12, 14, 18, 0.9)',
   trackEdge: 'rgba(0, 0, 0, 0.55)',
   track: '#c9ced6',
   road: '#9aa1ab',
@@ -71,6 +72,8 @@ const MIN_PATH_PX = 3;
 /** Zoom out with speed: radius grows by this fraction at SPEED_ZOOM_FULL m/s. */
 const SPEED_ZOOM = 0.6;
 const SPEED_ZOOM_FULL = 60;
+/** The big map (M) shows this many times the minimap's view radius. */
+const EXPANDED_ZOOM = 4;
 
 /**
  * Canvas minimap. Paths are turned into Path2D once (in world metres); each
@@ -81,6 +84,10 @@ export class Minimap {
   readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private data: MapData | null = null;
+  /** Big map (M): north up, zoomed out to EXPANDED_ZOOM × the view radius. */
+  expanded = false;
+  private image: HTMLImageElement | null = null;
+  private imageUrl = '';
   /** Traffic dots: x, z pairs (flag 1 in `trafficFlags` = wreck); drawn as small squares. */
   private traffic: Float32Array = new Float32Array(0);
   private trafficFlags: Uint8Array = new Uint8Array(0);
@@ -108,6 +115,18 @@ export class Minimap {
 
   setData(data: MapData): void {
     this.data = data;
+    if (data.image && this.imageUrl !== data.image.url) {
+      this.imageUrl = data.image.url;
+      this.image = null;
+      const img = new Image();
+      img.onload = () => {
+        if (this.imageUrl === img.src || img.src.endsWith(this.imageUrl)) this.image = img;
+      };
+      img.src = data.image.url;
+    } else if (!data.image) {
+      this.imageUrl = '';
+      this.image = null;
+    }
     this.radius = data.viewRadius;
     this.paths = data.paths.map((path) => {
       const shape = new Path2D();
@@ -131,8 +150,9 @@ export class Minimap {
   draw(x: number, z: number, yaw: number, speed: number, mode: MinimapMode, dt: number): void {
     const data = this.data;
     if (!data || this.pixelSize === 0) return;
-    const wanted = data.viewRadius * (1 + SPEED_ZOOM * Math.min(1, Math.abs(speed) / SPEED_ZOOM_FULL));
-    this.radius += (wanted - this.radius) * (1 - Math.exp(-2 * dt));
+    const wanted = this.expanded ? data.viewRadius * EXPANDED_ZOOM : data.viewRadius * (1 + SPEED_ZOOM * Math.min(1, Math.abs(speed) / SPEED_ZOOM_FULL));
+    this.radius += (wanted - this.radius) * (1 - Math.exp(-(this.expanded ? 6 : 2) * dt));
+    if (this.expanded) mode = 'fixed';
     const v = this.view;
     v.x = x;
     v.z = z;
@@ -145,14 +165,21 @@ export class Minimap {
     const size = this.pixelSize;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, size, size);
-    ctx.fillStyle = STYLE.background;
+    ctx.fillStyle = this.expanded ? STYLE.backgroundBig : STYLE.background;
     ctx.fillRect(0, 0, size, size);
 
     const t = minimapTransform(v);
+    // Arrow, markers and dots keep about the minimap's size on the big map.
+    const icon = this.expanded ? size * 0.38 : size;
     const k = size / 2 / v.radius;
     ctx.setTransform(t[0], t[1], t[2], t[3], t[4], t[5]);
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
+    const im = data.image;
+    if (im && this.image) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(this.image, im.minX, im.minZ, im.maxX - im.minX, im.maxZ - im.minZ);
+    }
     for (const { path, shape } of this.paths) {
       const w = Math.max(MIN_PATH_PX, path.width * k) / k;
       if (path.kind === 'area') {
@@ -167,9 +194,9 @@ export class Minimap {
       ctx.lineWidth = w;
       ctx.stroke(shape);
     }
-    for (const m of data.markers) this.drawMarker(m, k, size);
+    for (const m of data.markers) this.drawMarker(m, k, icon);
     if (this.trafficCount > 0) {
-      const d = Math.max(2.2, size * 0.022) / k;
+      const d = Math.max(2.2, icon * 0.022) / k;
       for (let i = 0; i < this.trafficCount; i++) {
         ctx.fillStyle = this.trafficFlags[i] ? STYLE.wreck : STYLE.traffic;
         ctx.fillRect(this.traffic[i * 2] - d / 2, this.traffic[i * 2 + 1] - d / 2, d, d);
@@ -180,7 +207,7 @@ export class Minimap {
     const [px, py] = minimapCenter(v);
     ctx.setTransform(1, 0, 0, 1, px, py);
     ctx.rotate(arrowAngle(v));
-    const s = size * 0.055;
+    const s = icon * 0.055;
     ctx.beginPath();
     ctx.moveTo(0, -s * 1.4);
     ctx.lineTo(s, s);
@@ -189,7 +216,7 @@ export class Minimap {
     ctx.closePath();
     ctx.fillStyle = STYLE.player;
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.lineWidth = Math.max(1, size * 0.008);
+    ctx.lineWidth = Math.max(1, icon * 0.008);
     ctx.fill();
     ctx.stroke();
 

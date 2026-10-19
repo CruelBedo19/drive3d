@@ -218,6 +218,23 @@ body {
   display: none;
 }
 
+/* Big map (M): centred, most of the screen height, north up. */
+.hud.map-expanded .hud-minimap,
+.hud.map-expanded.minimap-right .hud-minimap,
+.hud.map-expanded.no-minimap .hud-minimap {
+  display: block;
+  left: 50%;
+  right: auto;
+  top: 50%;
+  bottom: auto;
+  width: min(82vh, 92vw);
+  height: min(82vh, 92vw);
+  transform: translate(-50%, -50%);
+  border-radius: 18px;
+  z-index: 5;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+
 .hud-minimap-canvas {
   display: block;
   width: 100%;

@@ -218,7 +218,7 @@ async function main(): Promise<void> {
     const ns = trackInfo('nordschleife');
     const ys = data.points.map((q) => q[1]);
     check('map card stats come from the track data', !!ns && ns.length === data.length && ns.elevation === Math.round(Math.max(...ys) - Math.min(...ys)) && ns.corners === data.corners.length, `${((ns?.length ?? 0) / 1000).toFixed(2)} km, ${ns?.elevation} m, ${ns?.corners} corners`);
-    check('test track card', trackInfo('test')?.type.includes('Test') === true && TRACK_CATALOG.length === 3, `${TRACK_CATALOG.map((t) => t.name).join(', ')}`);
+    check('test track card', trackInfo('test')?.type.includes('Test') === true && TRACK_CATALOG.length === 4 && trackInfo('city')?.type === 'Açık dünya şehir', `${TRACK_CATALOG.map((t) => t.name).join(', ')}`);
     const ab = trackInfo('autobahn');
     check('Autobahn card: type, endless length, tags', ab?.type === 'Yüksek hız / Açık yol' && ab.length === Infinity && (ab.tags?.length ?? 0) >= 3, `${ab?.type}; ${ab?.tags?.join(', ')}`);
     p.update({ trackId: 'autobahn' });

@@ -67,6 +67,7 @@ export interface ControlSettings {
   respawn: string;
   headlights: string;
   trafficDensity: string;
+  map: string;
 }
 
 /** AI traffic (worlds that have it: the Autobahn). */
@@ -296,11 +297,12 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
   { section: 'controls', key: 'recover', label: 'Aracı düzelt', hint: 'Autobahn: yoldan çıktıysan en yakın şeride döner', type: 'key', default: 'KeyR' },
   { section: 'controls', key: 'respawn', label: 'Başa dön (respawn)', type: 'key', default: 'Shift+KeyR' },
   { section: 'controls', key: 'headlights', label: 'Far aç / kapat', type: 'key', default: 'KeyL' },
+  { section: 'controls', key: 'map', label: 'Büyük harita (aç / kapat)', type: 'key', default: 'KeyM' },
   { section: 'controls', key: 'trafficDensity', label: 'Trafik yoğunluğu (sırayla)', type: 'key', default: 'KeyT' },
 ];
 
 /** Keys the game keeps for itself (menus, developer tools): not bindable. */
-export const RESERVED_KEYS: ReadonlySet<string> = new Set(['Escape', 'F1', 'F2', 'F3', 'F4', 'F5', 'F11', 'F12', 'Tab', 'KeyP', 'Period']);
+export const RESERVED_KEYS: ReadonlySet<string> = new Set(['Escape', 'F1', 'F2', 'F3', 'F4', 'F5', 'F11', 'F12', 'Tab']);
 
 /** Current storage format. Bump when a change can't be read by sanitizeSettings(). */
 export const SETTINGS_VERSION = 2;

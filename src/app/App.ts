@@ -1,5 +1,6 @@
 import { AudioManager } from '../audio/AudioManager';
 import { preloadAssets } from './AssetPreloader';
+import { loadCity } from '../world/city/CityAssets';
 import { CAR_REGISTRY, getCar } from '../config/carRegistry';
 import { SETUP_IDS, isSetupId, type SetupId } from '../config/setups';
 import { DEFAULT_TRACK, TRACK_IDS, isTrackId, type TrackId } from '../config/tracks';
@@ -266,6 +267,12 @@ export class App {
     try {
       this.loading.stage('Fizik motoru hazırlanıyor…');
       await nextFrame();
+      if (track === 'city') {
+        // ~15 MB once per page (kept for later drives).
+        await loadCity((f, mb, total) => this.loading.progress(f, `Şehir yükleniyor · ${mb.toFixed(1)} / ${total.toFixed(1)} MB`));
+        if (token !== this.loadToken) return;
+        this.loading.progress(null);
+      }
       const physics = await PhysicsWorld.create();
       if (token !== this.loadToken) return physics.dispose();
       this.loading.stage('Pist oluşturuluyor…');

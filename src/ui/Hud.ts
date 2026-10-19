@@ -69,6 +69,16 @@ export class Hud {
     this.minimap.setTraffic(xz, flags, count);
   }
 
+  /** Big map in the middle of the screen (M), or back to the corner minimap. */
+  setMapExpanded(on: boolean): void {
+    this.minimap.expanded = on;
+    this.root.classList.toggle('map-expanded', on);
+  }
+
+  get mapExpanded(): boolean {
+    return this.minimap.expanded;
+  }
+
   /** Controls hint (shown for a few seconds after loading), built from the current bindings. */
   setHelp(text: string): void {
     this.helpEl.textContent = text;
@@ -116,7 +126,7 @@ export class Hud {
     const ui = this.settings;
     if (!ui || this.root.hidden) return;
     if (ui.speedometer) this.speedo.update(f);
-    if (ui.minimap) this.minimap.draw(f.x, f.z, f.yaw, f.speed, ui.minimapMode, dt);
+    if (ui.minimap || this.minimap.expanded) this.minimap.draw(f.x, f.z, f.yaw, f.speed, ui.minimapMode, dt);
     if (ui.showFps) {
       const fps = Math.round(f.fps);
       // Capacity is rounded to 10 so the text doesn't flicker every frame.

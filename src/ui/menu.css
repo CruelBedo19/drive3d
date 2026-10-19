@@ -258,18 +258,19 @@
 .map-cards {
   margin-top: clamp(16px, 3vh, 32px);
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
-  gap: 18px;
+  /* Two per row (four maps fit as 2 × 2 on a 720 p screen). */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 14px;
   min-height: 0;
   overflow: auto;
 }
 
 .map-card {
   display: grid;
-  grid-template-columns: minmax(120px, 38%) 1fr;
-  gap: 18px;
+  grid-template-columns: minmax(96px, 26%) 1fr;
+  gap: 16px;
   text-align: left;
-  padding: 18px;
+  padding: 14px 16px;
   border: 2px solid var(--m-line);
   border-radius: 12px;
   background: var(--m-panel);
@@ -291,6 +292,7 @@
 .map-thumb {
   width: 100%;
   aspect-ratio: 1;
+  max-height: 150px;
   border-radius: 8px;
   background: radial-gradient(circle, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.3));
 }

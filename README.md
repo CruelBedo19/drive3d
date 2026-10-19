@@ -12,6 +12,7 @@ npm run test:autobahn # Autobahn checks + long autopilot drives incl. 50 km at 3
 npm run test:world    # infinite landscape: seeds, biomes, tile seams / LOD, corridor, lifecycle (also in test:sim)
 npm run test:traffic  # AI traffic: lanes, following, overtaking, 300 km/h player, weather, lights, collisions (also in test:sim)
 npm run test:longrun  # 100 km with traffic + landscape at 130 / 200 / 300 km/h (~2 min CPU)
+npm run test:city     # city: files, spawn / teleports / drop test on streets, streaming colliders, Shift+R (also in test:sim)
 npm run build:track # rebuild the Nordschleife centre line from the cached OSM / SRTM data (--refresh downloads again)
 npm run bench       # physics cost per step
 npm run make:test-model   # regenerate the unbranded test GLB
@@ -19,7 +20,7 @@ npm run make:test-model   # regenerate the unbranded test GLB
 
 The site first preloads every car and traffic model (progress bar, ~20 MB), then opens the main menu: SÜR → map + weather → car confirm → loading → driving; GARAJ (the four real cars); AYARLAR.
 Developer / old links still start driving directly (menus skipped, nothing saved):
-`?track=test|nordschleife|autobahn`, `?seed=<n>` (Autobahn road seed, default 2026), `?car=bmw_m3_e92|bmw_m4_f82|amg_c63s_w205|amg_one`, `?setup=STREET|SPORT|DRIFT`, `?admin`.
+`?track=test|nordschleife|autobahn|city`, `?seed=<n>` (Autobahn road seed, default 2026), `?car=bmw_m3_e92|bmw_m4_f82|amg_c63s_w205|amg_one`, `?setup=STREET|SPORT|DRIFT`, `?admin`.
 
 ## Game flow
 
@@ -57,7 +58,7 @@ Always on in `npm run dev`; in a production build only with `?admin` (a hidden s
   and resettable; STREET / SPORT / DRIFT load a base; named presets, JSON export / import.
   The working tune is kept in this browser's localStorage and restored on reload (admin mode only).
 - **Test ortamı:** teleports (420 m speed strip, skidpad, slalom, chicane, ramp, crash wall), slow motion
-  (1× … 0.1×), pause `P` and single physics step `.`, automatic 0-100 / 0-200 / 100-0 / top speed /
+  (1× … 0.1×), automatic 0-100 / 0-200 / 100-0 / top speed /
   lateral g / drift-time measurements, live telemetry graph, debug panel and collider toggles.
 
 ## Physics
@@ -142,6 +143,17 @@ Always on in `npm run dev`; in a production build only with `?admin` (a hidden s
   - F2 → Dünya: seed, chunk counts, curvature, grade, banking, biome, object / collider counts, landscape tiles per
     LOD level, vegetation instances, distant scenery, generation ms, regenerate; Trafik: counts per tier, spawns,
     lane use, speeds, lane changes, update cost, one selected vehicle, debug lines (lanes, nodes, targets, ranges).
+
+- `city`: an open-world town ("Şehir" in Map Select, `?track=city`), from the "drive for speed - map" model
+  (amogusstrikesback2, CC BY-NC 4.0: personal / non-commercial use only). ~5.5 × 2.75 km of terrain, ~2 × 2 km of streets,
+  8 districts (admin teleports). No traffic yet.
+  - `npm run prepare:city` turns the 198 MB source (`assets-src/maps/`, not in git) into ~19 MB in `public/assets/city/`:
+    654 distinct geometries stored once (12,103 placements as matrices in 250 m cells), ground baked and cut per cell,
+    LOD meshes, meshopt + WebP, minimap image, collision boxes / trimeshes and street points.
+  - Runtime (`src/world/city/`): loaded once per page with a progress bar; cells within ~1.1 km are drawn (instances merged
+    per material per cell, LOD beyond 320 m, small props and trees hidden with distance in 125 m blocks), colliders only within
+    ~330 m (streets / ground as trimesh, buildings and big props as oriented boxes or their own simplified mesh where a box
+    would cover a street, tree trunks as slim boxes, small decoration none). Shift+R: nearest clear street point.
 
 ### AI traffic (Autobahn)
 

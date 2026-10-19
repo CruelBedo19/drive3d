@@ -37,6 +37,8 @@ export interface Track extends MapDataProvider {
   readonly killHeight: number;
   /** Optional fog distances for the scene (large worlds see further). */
   readonly fog?: { near: number; far: number };
+  /** Camera near plane, m (default 0.05). Larger buys depth precision for dense, far-reaching geometry. */
+  readonly cameraNear?: number;
   /** Data attribution to show on screen while this track is loaded. */
   readonly attribution?: string;
   /** Per-frame: dynamic props, and detail culling around the camera. */
@@ -61,6 +63,9 @@ export interface Track extends MapDataProvider {
   readonly mapRevision?: number;
   /** Developer numbers for F2. */
   debugInfo?(): Record<string, string | number>;
+  /** Debug overlays the track can draw (F2), and switching one on / off. */
+  debugLayers?(): { id: string; label: string; on: boolean }[];
+  setDebugLayer?(id: string, on: boolean): void;
   /** Rebuild the world from another seed (procedural tracks, F2). */
   regenerate?(seed: number): void;
   readonly seed?: number;

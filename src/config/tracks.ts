@@ -1,7 +1,7 @@
 /** Selectable driving worlds (`?track=`). */
-export type TrackId = 'test' | 'nordschleife' | 'autobahn';
+export type TrackId = 'test' | 'nordschleife' | 'autobahn' | 'city';
 
-export const TRACK_IDS: readonly TrackId[] = ['test', 'nordschleife', 'autobahn'];
+export const TRACK_IDS: readonly TrackId[] = ['test', 'nordschleife', 'autobahn', 'city'];
 export const DEFAULT_TRACK: TrackId = 'test';
 
 export function isTrackId(v: string | null): v is TrackId {

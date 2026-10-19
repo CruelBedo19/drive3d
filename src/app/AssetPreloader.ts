@@ -75,7 +75,8 @@ export async function preloadAssets(onProgress: (p: PreloadProgress) => void): P
         THREE.Cache.add(`file:${it.url}`, buf.buffer);
         loaded += Math.max(0, sizes[i] - got);
       } catch (err) {
-        console.warn('Preload failed (will load on demand):', it.url, err);
+        // Leaving the page cancels downloads: not worth a warning.
+        if (!leaving) console.warn('Preload failed (will load on demand):', it.url, err);
         loaded += sizes[i];
       }
       report(it.label);
@@ -90,6 +91,8 @@ export async function preloadAssets(onProgress: (p: PreloadProgress) => void): P
 }
 
 let cacheReady = false;
+let leaving = false;
+if (typeof window !== 'undefined') window.addEventListener('pagehide', () => (leaving = true));
 
 /**
  * Turns on three.js's file cache for downloaded files only. GLTFLoader decodes
