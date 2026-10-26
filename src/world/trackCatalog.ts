@@ -4,7 +4,7 @@ import { STRAIGHT_LENGTH, TRACK_WIDTH, TURN_RADIUS, stadiumLine } from './TestTr
 import nordschleifeData from './tracks/nordschleife.json';
 import { AUTOBAHN } from '../config/tracks';
 import { RoadGenerator } from './autobahn/RoadGenerator';
-import cityInfo from './tracks/city-info.json';
+import cityV2Info from './tracks/city-v2-info.json';
 
 /** What the map selection screen shows for a track, without building it. */
 export interface TrackInfo {
@@ -92,21 +92,22 @@ function autobahnInfo(): TrackInfo {
   };
 }
 
-/** The city: summary written by scripts/prepare-city.ts (the outline is the streets' convex hull). */
+/** The city: summary written by scripts/prepare-city-v2.ts (the outline is the ring road). */
 function cityTrackInfo(): TrackInfo {
+  const km = (cityV2Info.size / 1000).toFixed(cityV2Info.size % 1000 ? 1 : 0);
   return {
     id: 'city',
     name: 'Şehir',
     type: 'Açık dünya şehir',
-    environment: `${cityInfo.width} × ${cityInfo.depth} km · ${cityInfo.zones} bölge · sahil, ada, tepeler`,
-    description: 'Gökdelenli merkez, ada, liman, sahil ve tepelerle açık dünya şehir. Şimdilik trafiksiz.',
+    environment: `${km} × ${km} km · ${cityV2Info.blocks} blok · ${cityV2Info.roadKm} km yol`,
+    description: 'Downtown, alışveriş caddeleri, yerleşim ve sanayi bölgeleri; trafik ışıkları, şehir trafiği ve park etmiş arabalarla.',
     length: Infinity,
-    elevation: cityInfo.elevation,
-    corners: 0,
-    tags: ['Açık dünya', 'Şehir', 'Trafiksiz', 'CC BY-NC'],
-    outline: new Float32Array(cityInfo.outline),
+    elevation: 0,
+    corners: cityV2Info.junctions,
+    tags: ['Açık dünya', 'Şehir', 'Trafik', 'CC0'],
+    outline: new Float32Array(cityV2Info.outline),
     closed: true,
-    width: 20,
+    width: 18,
   };
 }
 

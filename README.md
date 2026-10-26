@@ -12,15 +12,16 @@ npm run test:autobahn # Autobahn checks + long autopilot drives incl. 50 km at 3
 npm run test:world    # infinite landscape: seeds, biomes, tile seams / LOD, corridor, lifecycle (also in test:sim)
 npm run test:traffic  # AI traffic: lanes, following, overtaking, 300 km/h player, weather, lights, collisions (also in test:sim)
 npm run test:longrun  # 100 km with traffic + landscape at 130 / 200 / 300 km/h (~2 min CPU)
-npm run test:city     # city: files, spawn / teleports / drop test on streets, streaming colliders, Shift+R (also in test:sim)
+npm run test:city     # city: layout rules on 5 seeds + 2 km, then the game files: junctions, kerbs, 100 / 200 km/h, buildings, props (also in test:sim)
+npm run test:city-traffic # city traffic and parked cars: lane graph, signals / stop signs kept, no gridlock, player, colliders (also in test:sim)
 npm run build:track # rebuild the Nordschleife centre line from the cached OSM / SRTM data (--refresh downloads again)
 npm run bench       # physics cost per step
 npm run make:test-model   # regenerate the unbranded test GLB
 ```
 
-The site first preloads every car and traffic model (progress bar, ~20 MB), then opens the main menu: SÜR → map + weather → car confirm → loading → driving; GARAJ (the four real cars); AYARLAR.
+The site first loads the physics engine and the one car shown behind the menu (progress bar, ~1–7 MB), then opens the main menu: SÜR → map + weather → car confirm → loading → driving; GARAJ (the thirteen real cars); AYARLAR.
 Developer / old links still start driving directly (menus skipped, nothing saved):
-`?track=test|nordschleife|autobahn|city`, `?seed=<n>` (Autobahn road seed, default 2026), `?car=bmw_m3_e92|bmw_m4_f82|amg_c63s_w205|amg_one`, `?setup=STREET|SPORT|DRIFT`, `?admin`.
+`?track=test|nordschleife|autobahn|city`, `?seed=<n>` (Autobahn road seed, default 2026), `?car=<id>` (ids in `src/config/carRegistry.ts`, e.g. `bmw_m3_e92`, `ferrari_f40`), `?setup=STREET|SPORT|DRIFT`, `?admin`.
 
 ## Game flow
 
@@ -32,13 +33,20 @@ Developer / old links still start driving directly (menus skipped, nothing saved
 - The car takes input and the simulation steps only in DRIVING. Pause = no physics step, held keys released.
 - Esc: driving ⇄ pause menu (Devam et, Yeniden başlat, Ayarlar, Harita seç, Garaj, Ana menü); elsewhere one screen back.
 - Garage: orbit (drag), zoom (wheel), ← → cars, "Bu aracı seç" (saved). Specs and rating bars come from the car config.
-- Cars: `src/config/carRegistry.ts` (data-driven): BMW M3 E92, BMW M4 F82, Mercedes-AMG C 63 S Coupé,
-  Mercedes-AMG ONE, plus the two test cars. The real cars use the test car's handling with their own
+- Cars: `src/config/carRegistry.ts` (data-driven): the thirteen real cars plus the two test cars (headless tests only). The real cars use the test car's handling with their own
   dimensions (wheelbase, track, wheel size, body), see `src/config/vehicles/fittedCar.ts`.
 - New car model: put the downloaded GLB in `assets-src/vehicles/`, add a recipe to `scripts/prepare-cars.ts`
-  (nose direction, real wheelbase, optional lamp / steering-wheel names) and run `npm run prepare:cars`: it writes
-  `public/assets/vehicles/<id>/<id>.glb` (metres, nose +Z, ground y = 0, nodes Body / WheelFL..RR / HeadLights /
-  TailLights / SteeringWheel, WebP textures) and the measurements to `carFits.json`. Then one registry entry.
+  (nose direction, real wheelbase, optional head / tail lamp and steering-wheel names, `merge`, `simplify`) and run
+  `npm run prepare:cars`: it writes `public/assets/vehicles/<id>/<id>.glb` (metres, nose +Z, ground y = 0, nodes
+  Body / WheelFL..RR / HeadLights / TailLights / SteeringWheel, same-material meshes of a part merged, WebP textures,
+  meshopt-compressed geometry) and the measurements to `carFits.json`. Then one registry entry.
+- Car models load on demand through one shared cache (`VehicleAssetCache`): the menu car at startup, the garage's
+  shown car and its neighbours, the drive's car on the loading screen. A model is parsed once and cloned for the
+  garage, the drive and restarts; up to four unused models stay cached, older ones are disposed (textures too).
+  Transmissive glass (KHR_materials_transmission, e.g. the M3's tail-light lenses) is replaced once per model by
+  tinted, glossy, alpha-blended glass (`withoutTransmission`, also used for traffic models): three.js would
+  otherwise draw every opaque object a second time each frame for it. Traffic models load in the background after
+  the menu is up; a drive waits for them.
 - Weather / time (`src/world/weather/`, one `WeatherManager` per session): clear, cloudy, rain, heavy rain, fog ×
   07:00 / 13:00 / 19:00 / 23:00 or any minute. `WeatherState` holds the numbers (preset transitions, real sun path at
   the Nürburgring latitude, wet → damp → dry road); the manager draws them: procedural sky with drifting clouds and
@@ -144,16 +152,108 @@ Always on in `npm run dev`; in a production build only with `?admin` (a hidden s
     LOD level, vegetation instances, distant scenery, generation ms, regenerate; Trafik: counts per tier, spawns,
     lane use, speeds, lane changes, update cost, one selected vehicle, debug lines (lanes, nodes, targets, ranges).
 
-- `city`: an open-world town ("Şehir" in Map Select, `?track=city`), from the "drive for speed - map" model
-  (amogusstrikesback2, CC BY-NC 4.0: personal / non-commercial use only). ~5.5 × 2.75 km of terrain, ~2 × 2 km of streets,
-  8 districts (admin teleports). No traffic yet.
-  - `npm run prepare:city` turns the 198 MB source (`assets-src/maps/`, not in git) into ~19 MB in `public/assets/city/`:
-    654 distinct geometries stored once (12,103 placements as matrices in 250 m cells), ground baked and cut per cell,
-    LOD meshes, meshopt + WebP, minimap image, collision boxes / trimeshes and street points.
-  - Runtime (`src/world/city/`): loaded once per page with a progress bar; cells within ~1.1 km are drawn (instances merged
-    per material per cell, LOD beyond 320 m, small props and trees hidden with distance in 125 m blocks), colliders only within
-    ~330 m (streets / ground as trimesh, buildings and big props as oriented boxes or their own simplified mesh where a box
-    would cover a street, tree trunks as slim boxes, small decoration none). Shift+R: nearest clear street point.
+- `city`: the town ("Şehir" in Map Select, `?track=city`; the old `?track=city_v2` links still work), procedural, on the
+  Downtown City MegaKit (Quaternius, CC0). It replaced the first city (a CC BY-NC Sketchfab map), removed with its files.
+  Code and files keep their `cityv2` / `city_v2` names.
+  Streets, buildings, street props, AI traffic and parked cars.
+  - Kit source: `assets-src/maps/downtown-city-megakit/` (not in git; the glTF export and its textures are used).
+    `npm run prepare:city [-- --seed n --size m]` writes the 2 × 2 km town to `public/assets/city_v2/` (~9.8 MB) and
+    `src/world/tracks/city-v2-info.json`; `--no-info` leaves the latter alone (fixtures), `-- --layout-only --out <dir>`
+    draws a layout review picture, `-- --catalog` prints the kit report. `test:city` also builds a 1 × 1 km fixture
+    of the same seed in the temp folder and runs the game-file checks on both.
+  - Layout (`scripts/lib/cityV2/layout.ts`, `districts.ts`): seeded street graph on a 6 m grid: ring road, 2-3 main
+    boulevards per km (300-500 m straights, few jogs), districts (downtown / commercial / residential / industrial) with
+    their own block sizes and street patterns, blocks split by streets (crossroads, staggered T's, L bends), alleys,
+    large parcels kept whole with a use (mall, park, car park, factory...), a plaza and a landmark at a boulevard T.
+  - Road classes (`src/world/cityv2/roadProfiles.ts`, shared by generator, markings, lane points, minimap and
+    runtime), kerb to kerb: 3+3 arterial 25 m with a 4 m median (the main boulevard nearest the centre on each axis,
+    so one crosses downtown; only one below 1.5 km), 2+2 boulevard 17 m with a 3 m median, 2+2 avenue 13 m (larger
+    downtown / commercial splits), 1+1 street 7 m, alley 5 m without sidewalks. Sidewalks per district: downtown 4 m,
+    commercial 3.5 m, residential and industrial 2.5 m.
+  - Ground (`scripts/lib/cityV2/ground.ts`): 0.5 m raster, one surface per cell (asphalt, sidewalk, lot, median, land), merged
+    into rectangles per 250 m cell, so junctions join with no gaps or overlaps; kit-style rounded kerb corners; kit
+    heights (sidewalks 15 cm above the asphalt) and kit textures (sidewalks use the concrete rows of the
+    T_MetalConcrete trim sheet, as the kit's sidewalk pieces do; nothing metallic). Lane markings are opaque
+    vertex-coloured quads 12 mm above the asphalt with polygon offset, drawn after it (the Autobahn approach; an
+    alpha-tested atlas lost them at grazing angles). Colliders: asphalt as drawn; a ramp across every kerb line, 0.5 m
+    out on the asphalt to 1.9 m into the block (15 cm over 2.4 m), so wheels roll on and off kerbs at town speeds.
+  - Buildings (`scripts/lib/cityV2/buildings.ts`): every ordinary block is built on; large parcels (park, stadium,
+    hospital, mall, factory, warehouse, car park), the plaza and the landmark block stay empty for their own assets
+    (`--sample-areas`: only the four A3 sample areas, one per district). Prototypes are assembled from the kit's facade
+    modules (2 / 4 m wide, 1 / 3 m tall; interior walls, floors and glass dropped, the fake-interior card becomes the
+    window), per style (loft, classic, red brick, modern, stone, houses with slate mansards, low works halls),
+    frontage / depth / floors / window rhythm / shopfronts / entrance / corner pilasters / cornice, and per side a
+    street facade, an exposed wall or a party wall. Placement walks each block's street sides (corners first, on the
+    most important road), downtown as a street wall (5-8 floors, 7-10 on the 3+3 arterials, around the plaza and in
+    the core within 200 m of it), commercial with gaps (3-7), residential with front yards and gaps (2-4), industrial
+    low and far apart (1-3). Lots are laid out first; then each district gets a catalogue of prototypes (the fewest
+    sizes and sides that fit every lot, a tall twin for shapes that also serve tall lots, then other styles of the
+    busiest ones: ≤ 30 downtown, 20 commercial, 18 residential, 10 industrial, one per three lots at most; floors
+    drawn from a shuffled bag so every height is used), and each lot the cheapest one that fits (stretched ≤ 20 %,
+    narrowed ≤ 15 %, a street facade wherever needed; not the prototype or style of a building it touches, nor the
+    prototype, height or outline of its neighbours further down the street). A building next to its own prototype
+    gets another colour variant (second wall / trim colours, lit and dark windows swapped). One box collider per
+    building. The minimap shows the footprints. `--no-buildings` prepares the same city without them.
+  - Building rendering (`CityV2Buildings.ts`, `buildingKit.ts`): one material for every building surface (base
+    colour and normal texture arrays, one layer per kit texture; a per-vertex slot gives layer, tint, roughness and
+    sky-light share, so the kit's pale / dark / green variants are recoloured, not separate materials; no blending).
+    Each module has four geometries: as modelled, a fine and a coarse relief (the front cut along its own edges
+    into rectangles at their depths, with the window reveals; trims one colour; columns and cornices up to three
+    stacked boxes), and a card. Prototypes are assembled in the browser (a few per frame while driving, coarser
+    levels drawn meanwhile) and instanced per prototype and level: near (< 35 m) the ground floor as modelled,
+    fine relief to 8 m, coarse above; street (< 110 m) coarse relief; mid: cards, each facade plane's walls merged
+    into a few rectangles. Cells whose buildings are all 220 m away are drawn as one merged mesh of their cards
+    (one draw call per cell, merged a few buildings per frame), beyond 450 m as boxes textured with the building's wall and shader-drawn window
+    rows (one draw call for all).
+  - Street props (`scripts/lib/cityV2/props.ts`, catalogue `src/world/cityv2/propKit.ts`, `--no-props` leaves them out):
+    the kit's bollard, planters, manhole and drain; everything else (trees, bushes, lamps, signals, signs, benches,
+    bins, hydrants, utility boxes, bus shelters, bike racks, barriers, fences, containers, stall lines, park paths)
+    is built from primitives in `props/PropCatalog.ts` (the free kit has none of them). Placement checks every prop
+    against the ground raster (sidewalk props on sidewalk cells...), keeps footprints apart, yard plants off the
+    buildings and anything tall out of a junction's sight box. District rules: downtown dense and ordered (tree pits,
+    benches, bins, bollards, planters, bike racks, bus stops), commercial sparser, residential green (verges, street
+    trees, yard bushes), industrial functional (floodlights, fences, containers, barriers). Lamps by road class
+    (the 3+3 arterials from the median), signals at main crossings (arterial / boulevard / avenue; mast arms over two
+    or three lanes), stop / yield on minor approaches to bigger roads, 30 zones entering residential streets,
+    crossing signs. Car parks, mall and yard parking get stall lines and `props.spots` (x, z, yaw, lot) for later
+    parked cars; the park gets paths, groves, benches, lamps and bins; factories and warehouses a fence with a gate,
+    container stacks, a loading zone, floodlights; malls and the landmark keep their middle free
+    (`props.reserved`) for their own models. `props.junctions` lists each junction's control per approach (signal
+    group, stop line) for later traffic AI. Runtime (`CityV2Props.ts`, `props/PropRenderer.ts`): instanced per
+    prototype and level (one InstancedMesh per part, sized for the whole town), culled per 125 m chunk by distance
+    (per prototype: ~110 m small things, ~200 m furniture, ~460 m trees / lamps / signals, a cheaper level for trees
+    and lamps beyond 110-220 m) and by the view; the buffers are refilled only when a chunk changes. Lamp heads glow
+    and a light pool shows under each lamp at night (no real light per lamp); signals run a fixed 30 s plan. Poles,
+    planters, barriers, utility boxes, shelters, fences and containers have box colliders, streamed with their cell.
+  - Runtime (`src/world/cityv2/`): CityData-style 250 m cells (streaming distance measured to each cell's geometry),
+    colliders within 150 m, the land around town always solid with walls at its edge; minimap image drawn from the
+    layout; Shift+R: nearest lane, facing the traffic direction. F2 → teleports to every junction type. Concrete gets a
+    reduced share of the sky environment light (own envMap; three.js scales scene.environment only by the scene's
+    environmentIntensity, so material envMapIntensity alone does nothing) and ground textures anisotropic filtering.
+
+  - Traffic (A5, `src/traffic/city/`): `CityLaneGraph` builds the lanes at load from the road graph and the
+    junction data of the props step (~0.2-0.4 s): lanes keep right and end at the stop line; connectors (cubic
+    curves) join them through junctions and bends: right turns from the outermost lane, left turns from the
+    innermost, straight on lane by lane or one lane over (there are no lane changes between junctions), turns
+    into the near half of the new road's lanes; every pair of connectors at a node whose paths cross or merge is a
+    conflict. `CityTrafficSystem` drives the same vehicles and models as the Autobahn (no long lorries in town except
+    with the "heavy" variety) as kinematic agents along a planned route: IDM following (also behind the player when
+    the player is in the path), speed limit by road class × the driver's share, slowing for turns. A driver enters a
+    junction only when its signal is green (yellow only if it cannot stop; the plan drawn on the poles, 11 s green,
+    3 s yellow, 1 s all red, one clock: `track.signalTime`), after a full stop at a stop sign, when no vehicle is on
+    or committed to a conflicting connector (or has its tail still in one), when there is room on the exit lane for
+    it and everyone heading there, when the player is not in its path, and after giving way: side roads to the main
+    road, left turns to oncoming traffic, at equal junctions to the right (after 6 s waiting only the box must be
+    clear). Two junctions joined by a lane too short to wait on are entered as one. 30 / 60 / 90 / 120 vehicles
+    (density setting, key T) between 170 and 380 m from the player (70 m behind it), gone beyond 430 m; gridlocked
+    ones (standing 60 s, out of sight) are removed. Near vehicles (< 80 m) get a pooled kinematic Rapier box that
+    turns into a real mass on contact; a hit leaves a wreck with hazard lights. F2: counts, why vehicles wait, the
+    selected vehicle; debug layer "Trafik şeritleri" draws the lane graph. Not yet: lane changes between junctions,
+    pedestrians, buses stopping at stops, the swept path of long vehicles in tight turns.
+  - Parked cars (`CityV2ParkedCars.ts`): a deterministic share of the stalls (car parks 62 %, malls 52 %, factories
+    42 %, warehouses 38 %), eleven low-poly cars of the traffic pack, nose or tail in; instanced models up to 90 m, a
+    painted low-poly stand-in up to 260 m, culled per 125 m chunk by distance and view, buffers refilled only on a
+    change; one box collider each, streamed with its cell.
 
 ### AI traffic (Autobahn)
 
@@ -166,11 +266,17 @@ Always on in `npm run dev`; in a production build only with `?admin` (a hidden s
   front gap, rear gap, closing speed and time-to-collision (9 s for a car over 200 km/h, looked for up to 600 m back),
   indicator first, 3-5 s quintic lane change, abort if something fast appears early. A vehicle moving into a lane
   counts as being in it, so two never take the same gap. Trucks stay out of the left lane.
-- Classes: built-in low-poly private cars (car, fast car, van, articulated truck) and ten modelled civil vehicles
-  (taxi, police, postal van, ambulance, city / school bus, garbage, road service, tow and fire trucks; from the
-  CC BY pack, prepared by `npm run prepare:traffic`). Models beyond 220 m are drawn as their low-poly stand-in.
+- Classes: built-in low-poly private cars (car, fast car, van, articulated truck; fallbacks and headless tests
+  only) and one class per vehicle of the CC BY traffic car pack (43 cars, SUVs, pickups, vans, police cars,
+  light trucks, trucks and a city bus, prepared by `npm run prepare:traffic`); a vehicle's kind sets its
+  handling, lanes and drivers, and each variety setting mixes the kinds.
   Profiles slow (95-120), normal (115-150), fast (145-190), very fast (180-230), truck (82-95), bus (88-100 km/h). Rain slows drivers (~14 % in heavy rain) and lengthens gaps; fog limits speed to
   what can be seen. Headlights at night, in poor weather and in tunnels, brake lights, indicators, hazard lights on wrecks.
+- Drawing (`TrafficVisuals`): instanced per class; beyond 110 m from the camera (±10 m, no flicker) a prepared model
+  is drawn as a low-poly stand-in of its size and paint (body, glass, wheels, working lamps; two shared instanced
+  sets for all classes, ~20× fewer triangles). The paint is measured from a render of each model
+  (`node scripts/traffic-paint.mjs http://localhost:<port>/`, needs `playwright-core`), written to
+  `src/config/trafficModels.json`.
 - A bubble 650 m behind / 2.1 km ahead of the player; vehicles appear at its edges (beyond 1.3 km ahead, or behind
   out of sight) and disappear there. Tiers: near (< 130 m: every step, collision body, wheels), medium (< 650 m:
   decisions at 30 Hz), far (10 Hz, no wheels).
@@ -234,13 +340,13 @@ src/
   camera/    CameraRig with chase / close / hood modes
   input/     InputManager (raw keys), DrivingInput (smoothed driver controls)
   world/     Track interface, TestTrack, nordschleife/ (centre line, strip meshes, colliders), autobahn/ (generator, chunks, biomes, landscape tiles, distant scenery), tracks/*.json
-  traffic/   lane network, traffic system (AI drivers, bodies), vehicle models / instanced visuals, debug view
+  traffic/   lane network, traffic system (AI drivers, bodies), vehicle models / instanced visuals, debug view; city/ (city lane graph and traffic)
   ui/        Hud (player HUD), hud/Speedometer, map/ (MapData, Minimap), screens/ (menus, settings), dev debug overlay
   settings/  Settings schema + store (versioned), Profile (last map / car / weather)
   admin/     super admin panel: tuning schema, live config, presets, measurements, telemetry graph
   utils/     math, FPS counter
 public/assets/{vehicles,environment,audio}   (vehicles/test-car/test-car.glb: generated test model)
-scripts/     sim-test.ts, vehicle-test.ts, visual-test.ts, admin-test.ts, keyboard-test.ts, track-test.ts, hud-test.ts, phase3-test.ts, weather-test.ts, autobahn-test.ts, world-test.ts, traffic-test.ts, autobahn-longrun.ts, lib/sim.ts, lib/trafficHarness.ts,
+scripts/     sim-test.ts, vehicle-test.ts, visual-test.ts, admin-test.ts, keyboard-test.ts, track-test.ts, hud-test.ts, phase3-test.ts, weather-test.ts, autobahn-test.ts, world-test.ts, traffic-test.ts, city-v2-test.ts, city-traffic-test.ts, autobahn-longrun.ts, lib/sim.ts, lib/trafficHarness.ts,
              bench.ts, make-test-model.ts, build-nordschleife.ts (+ data/ source cache)
 ```
 

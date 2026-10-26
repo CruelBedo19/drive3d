@@ -290,7 +290,7 @@ async function main(): Promise<void> {
     c.traffic.manual = true;
     c.traffic.setCutIns('many');
     placePlayer(c, 2000, c.track.laneNetwork.offsetAt(0, 1), 110);
-    const bold = c.traffic.spawnForTest('taxi', 'normal', 0, 0, 2030, 118 / 3.6, 125 / 3.6);
+    const bold = c.traffic.spawnForTest('sedan_red', 'normal', 0, 0, 2030, 118 / 3.6, 125 / 3.6);
     bold.bold = true;
     bold.cooldown = 0;
     const driver = new TestDriver(c, 1, 110, false, false);

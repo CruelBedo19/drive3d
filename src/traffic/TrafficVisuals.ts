@@ -7,6 +7,8 @@ import type { TrafficVehicle } from './TrafficVehicle';
 /** Most vehicles of one class, and glow points for all classes together (vehicles × 8). */
 const CAPACITY = 100;
 const GLOW_VEHICLES = 128;
+/** Most vehicles drawn with one shared far stand-in (all classes together). */
+const FAR_CAPACITY = 128;
 const WHEELS_MAX = CAPACITY * 10;
 const CLASS_IDS = Object.keys(TRAFFIC_CLASSES) as TrafficClassId[];
 const hasDom = typeof document !== 'undefined';
@@ -45,8 +47,13 @@ interface ClassMeshes {
   slots: TrafficVehicle[];
 }
 
-/** Beyond this distance a class with a `far` set is drawn with it (none today: models are drawn everywhere). */
-const MODEL_LOD_DISTANCE = 220;
+/**
+ * Beyond this distance from the camera a prepared model is drawn as a low-poly stand-in of its own size and
+ * colour (body, cabin glass, wheels, working lamps): a few pixels tall there, and ~20× fewer triangles. The band
+ * around it keeps a vehicle from switching back and forth at the edge.
+ */
+const MODEL_LOD_DISTANCE = 110;
+const MODEL_LOD_BAND = 10;
 
 /**
  * Draws all traffic with a handful of instanced meshes: per class a body
@@ -59,10 +66,20 @@ const MODEL_LOD_DISTANCE = 220;
 export class TrafficVisuals {
   readonly group = new THREE.Group();
   private readonly classes = new Map<TrafficClassId, ClassMeshes>();
+  /** Far stand-ins shared by every prepared model (scaled per instance to its size): one for cars, one for tall vehicles. */
+  private readonly farSets: Record<'car' | 'van', DrawSet>;
+  /** Where the stand-ins take over, m (debug / comparisons may move it). */
+  lodDistance = MODEL_LOD_DISTANCE;
+  /** Vehicles currently drawn as a stand-in (hysteresis). */
+  private readonly farNow = new WeakSet<TrafficVehicle>();
+  private readonly ms = new THREE.Matrix4();
+  private readonly sc = new THREE.Vector3();
   private readonly wheels: THREE.InstancedMesh;
   private readonly wheelGeo: THREE.CylinderGeometry;
   private readonly wheelMat: THREE.MeshStandardMaterial;
   private readonly bodyMat: THREE.MeshStandardMaterial;
+  /** The far stand-ins' body: less metallic than the built-in shapes, so the paint reads as the model's does. */
+  private readonly standInMat: THREE.MeshStandardMaterial;
   private readonly lampMat: THREE.MeshBasicMaterial;
   private readonly glow: THREE.Points;
   private readonly glowGeo: THREE.BufferGeometry;
@@ -82,8 +99,9 @@ export class TrafficVisuals {
     this.group.name = 'traffic';
     this.bodyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.42, metalness: 0.35 });
     this.lampMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
-    const mk = (geo: THREE.BufferGeometry, mat: THREE.Material | THREE.Material[], shadow: boolean, color: boolean) => {
-      const mesh = new THREE.InstancedMesh(geo, mat, CAPACITY);
+    this.standInMat = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.5, metalness: 0.12 });
+    const mk = (geo: THREE.BufferGeometry, mat: THREE.Material | THREE.Material[], shadow: boolean, color: boolean, capacity = CAPACITY) => {
+      const mesh = new THREE.InstancedMesh(geo, mat, capacity);
       mesh.count = 0;
       mesh.frustumCulled = false;
       mesh.castShadow = shadow;
@@ -96,14 +114,15 @@ export class TrafficVisuals {
       this.group.add(mesh);
       return mesh;
     };
-    const shapeSet = (id: TrafficClassId): DrawSet => {
+    const shapeSet = (id: TrafficClassId, capacity = CAPACITY, bodyMat = this.bodyMat): DrawSet => {
       const shape = buildTrafficModel(id);
-      const head = mk(shape.head, this.lampMat, false, true);
-      const tail = mk(shape.tail, this.lampMat, false, true);
-      const indLeft = mk(shape.indLeft, this.lampMat, false, true);
-      const indRight = mk(shape.indRight, this.lampMat, false, true);
-      return { shape, bodies: [mk(shape.body, this.bodyMat, true, true)], lamps: [head, tail, indLeft, indRight], head, tail, indLeft, indRight, painted: true, count: 0 };
+      const head = mk(shape.head, this.lampMat, false, true, capacity);
+      const tail = mk(shape.tail, this.lampMat, false, true, capacity);
+      const indLeft = mk(shape.indLeft, this.lampMat, false, true, capacity);
+      const indRight = mk(shape.indRight, this.lampMat, false, true, capacity);
+      return { shape, bodies: [mk(shape.body, bodyMat, true, true, capacity)], lamps: [head, tail, indLeft, indRight], head, tail, indLeft, indRight, painted: true, count: 0 };
     };
+    this.farSets = { car: shapeSet('car', FAR_CAPACITY, this.standInMat), van: shapeSet('van', FAR_CAPACITY, this.standInMat) };
     for (const id of CLASS_IDS) {
       const klass = TRAFFIC_CLASSES[id];
       const parts = klass.model ? trafficModel(klass.model) : undefined;
@@ -173,13 +192,22 @@ export class TrafficVisuals {
     const gp = this.glowGeo.attributes.position as THREE.BufferAttribute;
     const gc = this.glowGeo.attributes.color as THREE.BufferAttribute;
     const lit: { v: TrafficVehicle; d: number }[] = [];
-    const lodSq = MODEL_LOD_DISTANCE * MODEL_LOD_DISTANCE;
+    const inSq = (this.lodDistance - MODEL_LOD_BAND) ** 2;
+    const outSq = (this.lodDistance + MODEL_LOD_BAND) ** 2;
+    this.farSets.car.count = 0;
+    this.farSets.van.count = 0;
     for (const [id, cm] of this.classes) {
       const n = cm.slots.length;
       cm.near.count = 0;
       if (cm.far) cm.far.count = 0;
       const k = TRAFFIC_CLASSES[id];
       const L = cm.lamps;
+      // The stand-in for this class (prepared models only), its size relative to the built-in shape, its wheels.
+      const standIn = k.model && !cm.near.shape ? (k.heavy || k.height > 1.8 ? 'van' : 'car') : null;
+      const base = standIn ? TRAFFIC_CLASSES[standIn] : k;
+      const sx = k.width / base.width;
+      const sy = k.height / base.height;
+      const sz = k.length / base.length;
       for (let i = 0; i < n; i++) {
         const v = cm.slots[i];
         const a = v.prev;
@@ -192,10 +220,20 @@ export class TrafficVisuals {
         this.e.set(a.pitch + (b.pitch - a.pitch) * t, a.yaw + dy * t, a.roll + (b.roll - a.roll) * t, 'YXZ');
         this.q.setFromEuler(this.e);
         this.m.compose(this.p, this.q, this.s1);
-        const set = cm.far && this.p.distanceToSquared(camera) > lodSq ? cm.far : cm.near;
+        let far = false;
+        if (standIn) {
+          const d2 = this.p.distanceToSquared(camera);
+          far = this.farNow.has(v) ? d2 > inSq : d2 > outSq;
+          if (far) this.farNow.add(v);
+          else this.farNow.delete(v);
+        }
+        const set = far ? this.farSets[standIn!] : cm.near;
+        if (set.count >= (far ? FAR_CAPACITY : CAPACITY)) continue;
         const j = set.count++;
-        for (const m of set.bodies) m.setMatrixAt(j, this.m);
-        for (const m of set.lamps) m.setMatrixAt(j, this.m);
+        // The stand-in is the built-in shape stretched to this model's size.
+        const mm = far ? this.ms.copy(this.m).scale(this.sc.set(sx, sy, sz)) : this.m;
+        for (const m of set.bodies) m.setMatrixAt(j, mm);
+        for (const m of set.lamps) m.setMatrixAt(j, mm);
         if (set.painted) set.bodies[0].setColorAt(j, this.c.set(v.paint));
         const hazard = v.indicator === 2;
         const leftOn = blink && (v.indicator === 1 || hazard);
@@ -204,13 +242,16 @@ export class TrafficVisuals {
         set.tail?.setColorAt(j, v.brake ? BRAKE : v.headlights ? TAIL_ON : TAIL_OFF);
         set.indLeft?.setColorAt(j, leftOn ? IND_ON : IND_OFF);
         set.indRight?.setColorAt(j, rightOn ? IND_ON : IND_OFF);
-        // Wheels: near / medium only (far ones are a few pixels).
-        if (v.tier < 2 && w + k.axles.length * 2 <= WHEELS_MAX) {
-          for (const z of k.axles) {
+        // Wheels: near / medium only (far ones are a few pixels); prepared models have theirs in the model, stand-ins need them.
+        const wheels = far ? base : k;
+        const wr = far ? base.wheelRadius * sy : k.wheelRadius;
+        if ((v.tier < 2 || far) && w + wheels.axles.length * 2 <= WHEELS_MAX) {
+          for (const az of wheels.axles) {
+            const z = far ? az * sz : az;
             for (const side of [1, -1]) {
               this.mw.makeRotationX(v.wheelAngle);
-              this.mw.scale(this.lp.set(0.26, k.wheelRadius, k.wheelRadius));
-              this.mw.setPosition(side * (k.width / 2 - 0.13), k.wheelRadius, z);
+              this.mw.scale(this.lp.set(0.26, wr, wr));
+              this.mw.setPosition(side * (k.width / 2 - 0.13), wr, z);
               this.mw.premultiply(this.m);
               this.wheels.setMatrixAt(w++, this.mw);
             }
@@ -241,14 +282,10 @@ export class TrafficVisuals {
         }
         if (v.headlights && dark > 0.3) lit.push({ v, d: this.p.distanceToSquared(camera) });
       }
-      for (const set of cm.far ? [cm.near, cm.far] : [cm.near]) {
-        for (const mesh of [...set.bodies, ...set.lamps]) {
-          mesh.count = set.count;
-          mesh.instanceMatrix.needsUpdate = true;
-          if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-        }
-      }
+      for (const set of cm.far ? [cm.near, cm.far] : [cm.near]) this.commit(set);
     }
+    this.commit(this.farSets.car);
+    this.commit(this.farSets.van);
     this.wheels.count = w;
     this.wheels.instanceMatrix.needsUpdate = true;
     this.glowGeo.setDrawRange(0, g);
@@ -272,7 +309,24 @@ export class TrafficVisuals {
     });
   }
 
+  private commit(set: DrawSet): void {
+    for (const mesh of [...set.bodies, ...set.lamps]) {
+      mesh.count = set.count;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    }
+  }
+
+  /** Vehicles drawn as the model / as a stand-in in the last update (F2, tests). */
+  get drawnStandIns(): number {
+    return this.farSets.car.count + this.farSets.van.count;
+  }
+
   dispose(): void {
+    for (const set of [this.farSets.car, this.farSets.van]) {
+      for (const g of [set.shape!.body, set.shape!.head, set.shape!.tail, set.shape!.indLeft, set.shape!.indRight]) g.dispose();
+      for (const m of [...set.bodies, ...set.lamps]) m.dispose();
+    }
     for (const c of this.classes.values()) {
       for (const set of c.far ? [c.near, c.far] : [c.near]) {
         if (set.shape) for (const g of [set.shape.body, set.shape.head, set.shape.tail, set.shape.indLeft, set.shape.indRight]) g.dispose();
@@ -283,6 +337,7 @@ export class TrafficVisuals {
     this.wheelGeo.dispose();
     this.wheelMat.dispose();
     this.bodyMat.dispose();
+    this.standInMat.dispose();
     this.lampMat.dispose();
     this.glowGeo.dispose();
     this.glowMat.dispose();

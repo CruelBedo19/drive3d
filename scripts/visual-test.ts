@@ -1,6 +1,7 @@
 /**
- * Visual pipeline tests: glTF loading, node mapping, fallback, and physics ->
- * visual wheel synchronisation (placeholder and glTF). Part of `npm run test:sim`.
+ * Visual pipeline tests: glTF loading, node mapping, fallback, the shared car
+ * model cache, and physics -> visual wheel synchronisation (placeholder and
+ * glTF). Part of `npm run test:sim`.
  */
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
@@ -10,6 +11,7 @@ import type { VehicleModelConfig, VehicleVisualConfig } from '../src/config/vehi
 import { Vehicle } from '../src/vehicle/Vehicle';
 import { VehiclePhysics } from '../src/vehicle/physics/VehiclePhysics';
 import { GltfCarVisual, type ModelLoader } from '../src/vehicle/visual/GltfCarVisual';
+import { VehicleAssetCache } from '../src/vehicle/visual/VehicleAssetCache';
 import type { PlaceholderCarVisual } from '../src/vehicle/visual/PlaceholderCarVisual';
 import type { VehicleVisualState, WheelPose } from '../src/vehicle/visual/VehicleVisual';
 import { PhysicsWorld, RAPIER } from '../src/core/PhysicsWorld';
@@ -102,6 +104,53 @@ async function main(): Promise<void> {
     s.wheels[0].steerAngle = 0.4;
     v.update(s); // must not throw while on the fallback
     check('load failure: placeholder stays and keeps working', !ok && v.status === 'fallback' && countPlaceholderWheels(v.root) === 4 && warnings.length > before, `status ${v.status}, warning "${warnings.at(-1)?.slice(0, 60)}…"`);
+  }
+
+  section('Shared car model cache');
+  {
+    let loads = 0;
+    const counting: ModelLoader = (url) => {
+      loads++;
+      return fileLoader(url);
+    };
+    const cache = new VehicleAssetCache(counting, 1);
+    const url = baseModel.url;
+    const a = new GltfCarVisual(physicsCfg, testGltfCar.visual, cache);
+    const b = new GltfCarVisual(physicsCfg, testGltfCar.visual, cache);
+    await Promise.all([a.ready, b.ready]);
+    const meshes = (v: GltfCarVisual) => {
+      const out: THREE.Mesh[] = [];
+      v.root.traverse((o) => (o as THREE.Mesh).isMesh && out.push(o as THREE.Mesh));
+      return out;
+    };
+    const geoA = new Set(meshes(a).map((m) => m.geometry));
+    check('two users of one model: one download / parse, shared geometry', loads === 1 && a.status === 'loaded' && b.status === 'loaded' && meshes(b).some((m) => geoA.has(m.geometry)), `loads ${loads}`);
+    let disposed = 0;
+    for (const g of geoA) g.addEventListener('dispose', () => disposed++);
+    a.dispose();
+    b.dispose();
+    check('released model stays cached while idle (no dispose)', disposed === 0 && cache.has(url), `disposed ${disposed}`);
+    const c = new GltfCarVisual(physicsCfg, testGltfCar.visual, cache);
+    await c.ready;
+    check('coming back to a cached model: no new download / parse', loads === 1 && c.status === 'loaded', `loads ${loads}`);
+    c.dispose();
+    // A second idle model beyond maxIdle 1 pushes the least recently used one out.
+    await cache.prefetch('other.glb');
+    await new Promise((r) => setTimeout(r, 0));
+    check('idle models beyond the limit are disposed (LRU)', !cache.has(url) && disposed > 0 && cache.size === 1, `cached ${cache.size}, geometries disposed ${disposed}`);
+    const late = new GltfCarVisual(physicsCfg, testGltfCar.visual, cache);
+    late.dispose(); // disposed before its model arrived
+    await late.ready;
+    cache.clearIdle();
+    check('visual disposed while loading: model released, nothing leaks', late.status === 'loading' && cache.size === 0, `status ${late.status}, cached ${cache.size}`);
+    let fail = true;
+    const flaky = new VehicleAssetCache((u) => (fail ? Promise.reject(new Error('offline')) : fileLoader(u)));
+    const f1 = new GltfCarVisual(physicsCfg, testGltfCar.visual, flaky);
+    await f1.ready;
+    fail = false;
+    const f2 = new GltfCarVisual(physicsCfg, testGltfCar.visual, flaky);
+    await f2.ready;
+    check('failed load is not cached: next request tries again', f1.status === 'fallback' && f2.status === 'loaded', `${f1.status} → ${f2.status}`);
   }
 
   section('Wheel visual synchronisation');

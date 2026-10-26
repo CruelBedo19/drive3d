@@ -3,7 +3,7 @@ import './ui/menu.css';
 import { App } from './app/App';
 import { findCar } from './config/carRegistry';
 import { isSetupId } from './config/setups';
-import { isTrackId } from './config/tracks';
+import { canonicalTrackId, isTrackId } from './config/tracks';
 
 function boot(): void {
   const container = document.getElementById('app');
@@ -12,7 +12,7 @@ function boot(): void {
   // Developer / old links: ?track=test|nordschleife, ?car=<id>, ?setup=STREET|SPORT|DRIFT start driving
   // straight away (menus skipped, nothing saved); ?seed=<n> picks the Autobahn seed. ?admin: super-admin panel (always on in dev).
   const params = new URLSearchParams(window.location.search);
-  const track = params.get('track')?.toLowerCase() ?? null;
+  const track = canonicalTrackId(params.get('track')?.toLowerCase() ?? null);
   const car = params.get('car');
   const setup = params.get('setup')?.toUpperCase() ?? null;
   const seedParam = params.get('seed');

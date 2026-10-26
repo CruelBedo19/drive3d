@@ -185,11 +185,11 @@ async function main(): Promise<void> {
     a.update(false);
     a.update(true);
     check('auto: L overrides until the conditions change, then auto takes over', autoOn && overridden && a.on, `auto on → L off (held) → conditions flip → auto again`);
-    const m4 = getCar('bmw_m4_f82');
-    const rig = new HeadlightRig(m4.definition.physics.chassis.halfExtents.z, 0.05);
+    const one = getCar('amg_one');
+    const rig = new HeadlightRig(one.definition.physics.chassis.halfExtents.z, 0.05);
     rig.update(true, 1, 1);
     const spot = rig.group.children.find((c): c is THREE.SpotLight => c instanceof THREE.SpotLight);
-    check('car without lamp meshes (M4, ONE) still lights the road (generic spot, no shadows)', !m4.definition.visual.model?.nodes.headlights && !getCar('amg_one').definition.visual.model?.nodes.headlights && !!spot && spot.intensity > 0 && !spot.castShadow, `spot ${spot?.intensity}, shadow ${spot?.castShadow}`);
+    check('car without head lamp meshes (ONE, 911 RSR) still lights the road (generic spot, no shadows)', !one.definition.visual.model?.nodes.headlights && !getCar('porsche_911_gt3_rsr').definition.visual.model?.nodes.headlights && !!spot && spot.intensity > 0 && !spot.castShadow, `spot ${spot?.intensity}, shadow ${spot?.castShadow}`);
     rig.update(false, 1, 1);
     check('off: zero intensity (no shader recompile from toggling the light)', spot?.intensity === 0, 'intensity 0');
     rig.dispose();

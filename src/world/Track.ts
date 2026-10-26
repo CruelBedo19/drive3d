@@ -1,5 +1,6 @@
 import type * as THREE from 'three';
 import type { TrafficLaneNetwork } from '../traffic/TrafficLaneNetwork';
+import type { CityLaneGraph } from '../traffic/city/CityLaneGraph';
 import type { MapDataProvider } from '../ui/map/MapData';
 
 /** What a track may use each frame to cull detail. */
@@ -12,6 +13,10 @@ export interface TrackView {
   visibility?: number;
   /** Camera far plane, m (nothing beyond it is drawn). */
   cameraFar?: number;
+  /** The view's frustum this frame: tracks may leave out what is outside it. */
+  frustum?: THREE.Frustum;
+  /** 0 by day .. 1 at night (lamps may glow). */
+  night?: number;
 }
 
 export interface SpawnPoint {
@@ -71,5 +76,8 @@ export interface Track extends MapDataProvider {
   readonly seed?: number;
   /** Traffic lanes (worlds with AI traffic). */
   readonly laneNetwork?: TrafficLaneNetwork;
+  /** Town traffic lanes and junctions (City V2), and the clock of its signal plan, s (advanced by the traffic). */
+  readonly laneGraph?: CityLaneGraph;
+  signalTime?: number;
   dispose(): void;
 }

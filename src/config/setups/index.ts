@@ -1,4 +1,5 @@
 import type { VehicleConfig, VehicleSetup } from '../vehicleTypes';
+import { placeholderStreet } from '../vehicles/placeholderStreet';
 
 /**
  * Setups are partial overrides applied on top of a car's base config. They are
@@ -90,6 +91,42 @@ export const SETUPS: Record<SetupId, VehicleSetup> = {
     brakes: { handbrakeForce: 9000, handbrakeRearGrip: 0.7 },
   },
 };
+
+/**
+ * Values the setups were tuned as absolute numbers on the test car but that belong to a car's size and power
+ * (engine, brakes, springs, bars, aero, tyres): for another car they are applied as the same ratio to its own.
+ */
+const SCALED: readonly (readonly [string, string])[] = [
+  ['engine', 'maxPowerKw'],
+  ['engine', 'peakTorqueNm'],
+  ['brakes', 'maxForce'],
+  ['brakes', 'handbrakeForce'],
+  ['suspension', 'stiffness'],
+  ['suspension', 'compressionDamping'],
+  ['suspension', 'reboundDamping'],
+  ['front', 'antiRoll'],
+  ['rear', 'antiRoll'],
+  ['chassis', 'downforce'],
+  ['tires', 'friction'],
+  ['tires', 'longitudinalGrip'],
+];
+
+/**
+ * A setup for one car: SPORT on a 2.8 t SUV is that SUV's engine +X %, stiffer by the same share, not the test car's
+ * numbers. Values in SCALED become car value × (setup / test car); everything else (steering, assists, diff, grip
+ * balance) applies as written. On the test car itself this is exactly SETUPS[id].
+ */
+export function setupFor(car: VehicleConfig, id: SetupId): VehicleSetup {
+  const out = structuredClone(SETUPS[id]) as Record<string, Record<string, unknown>>;
+  const ref = placeholderStreet.physics as unknown as Record<string, Record<string, number>>;
+  const own = car as unknown as Record<string, Record<string, number>>;
+  for (const [group, key] of SCALED) {
+    const v = out[group]?.[key];
+    if (typeof v !== 'number') continue;
+    out[group][key] = own[group][key] * (v / ref[group][key]);
+  }
+  return out as VehicleSetup;
+}
 
 export function isSetupId(v: string | null): v is SetupId {
   return v !== null && (SETUP_IDS as readonly string[]).includes(v);

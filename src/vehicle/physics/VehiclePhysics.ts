@@ -346,7 +346,10 @@ export class VehiclePhysics {
     const axleGrip = w.isFront ? cfg.front.grip : cfg.rear.grip;
     const mu = tires.friction * axleGrip * cmd.gripScale * w.surfaceGrip;
     const maxF = mu * load;
-    const maxLong = maxF * tires.longitudinalGrip;
+    // Braking: the tyre's longitudinal grip × the car's braking grip (stronger stops than traction).
+    const braking = cmd.brakeTorque > 0 && Math.abs(cmd.driveTorque) < cmd.brakeTorque;
+    const longGrip = tires.longitudinalGrip * (braking ? (tires.brakingGrip ?? 1) : 1);
+    const maxLong = maxF * longGrip;
     const massShare = load / GRAVITY;
 
     // Ideal TC / ABS: cap torques at what the tyre can still transmit while cornering.
@@ -417,7 +420,7 @@ export class VehiclePhysics {
       let fy = 0;
       if (sigma > 1e-6) {
         const total = maxF * Math.sin(tires.curveShape * Math.atan(this.peakB * sigma));
-        fx = ((total * sx) / sigma) * tires.longitudinalGrip;
+        fx = ((total * sx) / sigma) * longGrip;
         fy = (-total * sy) / sigma;
       }
 

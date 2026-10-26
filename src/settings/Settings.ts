@@ -248,7 +248,7 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     section: 'traffic',
     key: 'density',
     label: 'Trafik yoğunluğu',
-    hint: 'Autobahn haritasında; sürerken T ile de değişir',
+    hint: 'Autobahn ve şehirde; sürerken T ile de değişir',
     type: 'select',
     default: 'medium',
     options: [

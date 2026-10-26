@@ -2,6 +2,8 @@ import { VehiclePhysics } from '../../vehicle/physics/VehiclePhysics';
 import type { VehicleConfig, VehicleDefinition, VehicleNodeMap } from '../vehicleTypes';
 import carFits from './carFits.json';
 import { placeholderStreet } from './placeholderStreet';
+import { realPhysics } from './realPhysics';
+import { REAL_SPECS } from './realSpecs';
 
 /** Measurements of a prepared model (scripts/prepare-cars.ts → carFits.json). */
 export interface CarFit {
@@ -33,17 +35,19 @@ export interface FittedCarOptions {
 const FRONT_SHARE = 1.35 / 2.65;
 
 /**
- * A real car model on the test car's physics: every handling value (engine,
- * gearbox, tyres, suspension, assists, setups) is the test car's; only the
- * dimensions come from the model (wheelbase, track, wheel size, body size) so
- * the wheels sit in the arches and the car collides with its real shape.
+ * A real car model: the dimensions come from the model (wheelbase, track, wheel
+ * size, body size) so the wheels sit in the arches and the car collides with
+ * its real shape; mass, weight split, engine, gearbox, drivetrain, aero, tyres,
+ * brakes and springs from its factory data (realSpecs.ts → realPhysics.ts).
+ * The handling model's own values (tyre curves, steering, assists) are the test
+ * car's. A car without factory data drives entirely on the test car's physics.
  */
 export function fittedCar(o: FittedCarOptions): VehicleDefinition {
   const fit = (carFits as Record<string, CarFit>)[o.id];
   if (!fit) throw new Error(`no carFits.json entry for ${o.id}: run npm run prepare:cars`);
   const base = placeholderStreet.physics;
   const frontZ = fit.wheelbase * FRONT_SHARE;
-  const physics: VehicleConfig = {
+  const fitted: VehicleConfig = {
     ...base,
     id: o.id,
     name: o.name,
@@ -56,6 +60,8 @@ export function fittedCar(o: FittedCarOptions): VehicleDefinition {
     rear: { ...base.rear, z: frontZ - fit.wheelbase, halfTrack: fit.rearHalfTrack },
     wheel: { ...base.wheel, radius: fit.wheelRadius, width: fit.wheelWidth },
   };
+  const spec = REAL_SPECS[o.id];
+  const physics = spec ? realPhysics(fitted, spec) : fitted;
   const rest = VehiclePhysics.restHeight(physics);
   const nodes: VehicleNodeMap = {
     body: 'Body',

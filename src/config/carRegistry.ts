@@ -1,6 +1,7 @@
-import { SETUPS, applySetup, type SetupId } from './setups';
+import { SETUPS, applySetup, setupFor, type SetupId } from './setups';
 import type { VehicleConfig, VehicleDefinition } from './vehicleTypes';
 import { fittedCar } from './vehicles/fittedCar';
+import { REAL_SPECS } from './vehicles/realSpecs';
 
 /**
  * Selectable cars (garage, car confirm, ?car=). The test cars (placeholderStreet,
@@ -43,16 +44,27 @@ const real = (id: string, brand: string, model: string, year: number, color: num
   definition: fittedCar({ id, name: `${brand} ${model}`, bodyColor: color, ...extras }),
   defaultSetup: 'STREET',
   placeholder: false,
-  testPhysics: true,
-  description,
+  testPhysics: !REAL_SPECS[id],
+  description: REAL_SPECS[id] ? `${REAL_SPECS[id].engine.label}. ${description}` : description,
   credit,
 });
 
 export const CAR_REGISTRY: readonly CarEntry[] = [
   real('bmw_m3_e92', 'BMW', 'M3 (E92)', 2008, 0x1d3f8a, 'Galaxy Car Showroom · CC BY 4.0', 'V8 atmosferik coupé.', { headlights: true, brakeLights: true, steeringWheel: true }),
-  real('bmw_m4_f82', 'BMW', 'M4 (F82)', 2014, 0x2a5fb0, 'Galaxy Car Showroom · CC BY 4.0', 'Çift turbo sıralı altı coupé.'),
+  real('bmw_m4_f82', 'BMW', 'M4 (F82)', 2014, 0x2a5fb0, 'Galaxy Car Showroom · CC BY 4.0', 'Çift turbo sıralı altı coupé.', { headlights: true }),
   real('amg_c63s_w205', 'Mercedes-AMG', 'C 63 S Coupé (W205)', 2017, 0x9a9a9a, 'GT Cars: Hyperspeed · CC BY 4.0', 'V8 biturbo coupé.', { headlights: true, brakeLights: true }),
   real('amg_one', 'Mercedes-AMG', 'ONE', 2022, 0xb8b8b8, '3dblender_1 · CC BY 4.0', 'F1 kökenli hibrit hiper otomobil.', { brakeLights: true }),
+  // Second batch: Sketchfab models reduced with RigBake, which dropped the author / licence metadata (E36 excepted).
+  // Lamp groups only where scripts/prepare-cars.ts maps them; no steering wheel node on these (or on the M4 / C63 / ONE).
+  real('porsche_911_gt3_rsr', 'Porsche', '911 GT3 RSR', 2022, 0xf0a020, 'Sketchfab · yazar / lisans doğrulanmadı', 'Boxer altılı GT yarış otomobili.', { brakeLights: true }),
+  real('audi_rs6_c8', 'Audi', 'RS 6 Avant (C8)', 2020, 0x8c8f93, 'Sketchfab · yazar / lisans doğrulanmadı', 'V8 biturbo station wagon.', { headlights: true, brakeLights: true }),
+  real('bmw_m3_e36', 'BMW', 'M3 (E36)', 1995, 0xb8bcc0, 'Martin Trafas · CC BY 4.0', 'Sıralı altı atmosferik coupé.', { headlights: true, brakeLights: true }),
+  real('bmw_m3_g81', 'BMW', 'M3 Competition Touring (G81)', 2022, 0x2a7fa8, 'Sketchfab · yazar / lisans doğrulanmadı', 'Çift turbo sıralı altı station wagon.', { headlights: true, brakeLights: true }),
+  real('ferrari_f40', 'Ferrari', 'F40', 1987, 0xb01818, 'Sketchfab · yazar / lisans doğrulanmadı', 'V8 biturbo efsane süper otomobil.', { headlights: true, brakeLights: true }),
+  real('honda_civic_ek9', 'Honda', 'Civic Type R (EK9)', 1998, 0xd8dadc, 'Sketchfab · yazar / lisans doğrulanmadı', 'Yüksek devirli VTEC hot hatch.', { brakeLights: true }),
+  real('honda_nsx', 'Honda', 'NSX', 1990, 0xe0e0e0, 'Sketchfab · yazar / lisans doğrulanmadı', 'Orta motorlu V6 spor otomobil.', { brakeLights: true }),
+  real('brabus_g900', 'Mercedes-AMG', 'G 63 Brabus 900', 2020, 0x5f6b55, 'Sketchfab · yazar / lisans doğrulanmadı', 'V8 biturbo arazi canavarı.', { headlights: true, brakeLights: true }),
+  real('maybach_gls600', 'Mercedes-Maybach', 'GLS 600', 2021, 0xf0f0f0, 'Sketchfab · yazar / lisans doğrulanmadı', 'V8 biturbo lüks SUV.', { headlights: true, brakeLights: true }),
 ];
 
 export const DEFAULT_CAR_ID = 'bmw_m3_e92';
@@ -108,7 +120,7 @@ export interface CarRatings {
 }
 
 export function carRatings(entry: CarEntry, setup: SetupId = entry.defaultSetup): CarRatings {
-  const p = applySetup(entry.definition.physics, SETUPS[setup]);
+  const p = applySetup(entry.definition.physics, setupFor(entry.definition.physics, setup));
   const scale = (v: number, lo: number, hi: number) => Math.round(Math.min(100, Math.max(0, ((v - lo) / (hi - lo)) * 100)));
   const kwPerTonne = p.engine.maxPowerKw / (p.chassis.mass / 1000);
   const grip = p.tires.friction * ((p.front.grip + p.rear.grip) / 2) + p.chassis.downforce * 0.03;

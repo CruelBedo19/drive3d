@@ -218,7 +218,7 @@ async function main(): Promise<void> {
     const ns = trackInfo('nordschleife');
     const ys = data.points.map((q) => q[1]);
     check('map card stats come from the track data', !!ns && ns.length === data.length && ns.elevation === Math.round(Math.max(...ys) - Math.min(...ys)) && ns.corners === data.corners.length, `${((ns?.length ?? 0) / 1000).toFixed(2)} km, ${ns?.elevation} m, ${ns?.corners} corners`);
-    check('test track card', trackInfo('test')?.type.includes('Test') === true && TRACK_CATALOG.length === 4 && trackInfo('city')?.type === 'Açık dünya şehir', `${TRACK_CATALOG.map((t) => t.name).join(', ')}`);
+    check('test track card', trackInfo('test')?.type.includes('Test') === true && TRACK_CATALOG.length === 4 && trackInfo('city')?.name === 'Şehir' && trackInfo('city')?.type === 'Açık dünya şehir' && trackInfo('city_v2') === undefined, `${TRACK_CATALOG.map((t) => t.name).join(', ')}`);
     const ab = trackInfo('autobahn');
     check('Autobahn card: type, endless length, tags', ab?.type === 'Yüksek hız / Açık yol' && ab.length === Infinity && (ab.tags?.length ?? 0) >= 3, `${ab?.type}; ${ab?.tags?.join(', ')}`);
     p.update({ trackId: 'autobahn' });
@@ -235,7 +235,7 @@ async function main(): Promise<void> {
   section('Garage / vehicle registry');
   {
     const errors = validateRegistry();
-    check('registry is valid: the 4 real cars only (test cars removed from the game)', errors.length === 0 && CAR_REGISTRY.length === 4 && CAR_REGISTRY.every((c) => !c.placeholder), errors.join('; ') || CAR_REGISTRY.map((c) => c.id).join(', '));
+    check('registry is valid: the 13 real cars only (test cars removed from the game)', errors.length === 0 && CAR_REGISTRY.length === 13 && CAR_REGISTRY.every((c) => !c.placeholder), errors.join('; ') || CAR_REGISTRY.map((c) => c.id).join(', '));
     const broken: CarEntry[] = [
       { ...CAR_REGISTRY[1], id: 'x' },
       { ...CAR_REGISTRY[1], id: 'x', aliases: [], definition: { ...CAR_REGISTRY[1].definition, visual: { ...CAR_REGISTRY[1].definition.visual, model: { ...CAR_REGISTRY[1].definition.visual.model!, nodes: { ...CAR_REGISTRY[1].definition.visual.model!.nodes, wheelRR: '' } } } } },

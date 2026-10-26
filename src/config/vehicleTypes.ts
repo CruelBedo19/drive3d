@@ -108,6 +108,11 @@ export interface TireConfig {
    * 1 = at the contact patch (fully physical). Low values keep the car from tipping.
    */
   rollInfluence: number;
+  /**
+   * Longitudinal grip multiplier while the service brake is on (1 = the tyre's own). Above 1 the car stops
+   * harder than the tyre would allow: a game choice for cars that should feel like they stop.
+   */
+  brakingGrip?: number;
 }
 
 export interface SteeringConfig {
@@ -236,6 +241,8 @@ export interface VehicleConfig {
   /** Front torque fraction for AWD (ignored otherwise). */
   awdFrontSplit: number;
   maxSpeedKmh: number;
+  /** Top speed without the limiter (real cars), km/h: the Autobahn lifts maxSpeedKmh to it. */
+  vmaxKmh?: number;
   maxReverseKmh: number;
   chassis: ChassisConfig;
   front: AxleConfig;

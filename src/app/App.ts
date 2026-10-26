@@ -1,6 +1,6 @@
 import { AudioManager } from '../audio/AudioManager';
 import { preloadAssets } from './AssetPreloader';
-import { loadCity } from '../world/city/CityAssets';
+import { loadCityV2 } from '../world/cityv2/CityV2Assets';
 import { CAR_REGISTRY, getCar } from '../config/carRegistry';
 import { SETUP_IDS, isSetupId, type SetupId } from '../config/setups';
 import { DEFAULT_TRACK, TRACK_IDS, isTrackId, type TrackId } from '../config/tracks';
@@ -16,7 +16,9 @@ import { SettingsStore, type GameSettings } from '../settings/Settings';
 import { CarConfirm, GarageUi, LoadingScreen, MainMenu, MapSelect, PauseMenu, TIME_LABELS, WEATHER_LABELS, carTitle, formatHour } from '../ui/screens/MenuScreens';
 import type { Screen } from '../ui/screens/Screen';
 import { SettingsScreen } from '../ui/screens/SettingsScreen';
+import { loadTrafficModels } from '../traffic/TrafficModelLibrary';
 import { FrameTimer } from '../utils/FrameTimer';
+import { vehicleAssets } from '../vehicle/visual/VehicleAssetCache';
 import { TRACK_CATALOG, trackInfo } from '../world/trackCatalog';
 import { PRESET_HOURS } from '../world/weather/WeatherState';
 
@@ -149,19 +151,25 @@ export class App {
     void this.boot();
   }
 
-  /** Site opened: fetch every model first (with a progress bar), then the menus (or the direct drive). */
+  /**
+   * Site opened: the physics engine and the car the menu shows first (with a progress bar), then the menus (or
+   * the direct drive). Other cars load when asked for; the traffic models start loading in the background.
+   */
   private async boot(): Promise<void> {
     this.loading.set('Drive3D', 'Oyun dosyaları yükleniyor');
     this.loading.show();
+    const direct = this.options.direct;
+    const car = getCar(direct?.car ?? this.profile.value.carId);
     try {
-      await preloadAssets((p) => this.loading.progress(p.fraction, p.totalMB > 0 ? `${p.label} · ${p.loadedMB.toFixed(1)} / ${p.totalMB.toFixed(1)} MB` : p.label));
+      await preloadAssets(car.definition.visual.model?.url, carTitle(car), (p) => this.loading.progress(p.fraction, p.totalMB > 0 ? `${p.label} · ${p.loadedMB.toFixed(1)} / ${p.totalMB.toFixed(1)} MB` : p.label));
     } catch (err) {
-      // Not fatal: models then load on demand, as without the preloader.
+      // Not fatal: the car then loads (or falls back) when shown.
       console.warn('Preloading failed', err);
     }
     if (this.disposed) return;
     this.loading.progress(null);
-    const direct = this.options.direct;
+    // After the menu's first frames (car upload, shader compilation), so parsing them does not delay those.
+    setTimeout(() => void loadTrafficModels(), 3000);
     if (direct) {
       this.sessionOverride = { trackId: direct.track, carId: direct.car, setup: direct.setup };
       this.flow.go('LOADING');
@@ -224,6 +232,7 @@ export class App {
     if (this.showroom) {
       this.showroom.setMode(state === 'GARAGE' ? 'garage' : 'showcase');
       this.showCar(state === 'GARAGE' ? this.garageUi.previewId : p.carId);
+      if (state === 'GARAGE') this.prefetchNeighbours(this.garageUi.previewId);
     }
     this.screens[state]?.show();
   }
@@ -268,11 +277,22 @@ export class App {
       this.loading.stage('Fizik motoru hazırlanıyor…');
       await nextFrame();
       if (track === 'city') {
-        // ~15 MB once per page (kept for later drives).
-        await loadCity((f, mb, total) => this.loading.progress(f, `Şehir yükleniyor · ${mb.toFixed(1)} / ${total.toFixed(1)} MB`));
+        // ~10 MB once per page (kept for later drives).
+        await loadCityV2((f, mb, total) => this.loading.progress(f, `Şehir yükleniyor · ${mb.toFixed(1)} / ${total.toFixed(1)} MB`));
         if (token !== this.loadToken) return;
         this.loading.progress(null);
       }
+      // The car's model (a cache hit when the garage or the menu showed it) and the traffic models.
+      const carUrl = car.definition.visual.model?.url;
+      if (carUrl && !vehicleAssets.has(carUrl)) {
+        this.loading.stage('Araç modeli yükleniyor…');
+        await vehicleAssets.prefetch(carUrl, (l, t) => this.loading.progress(t > 0 ? l / t : null, `Araç modeli yükleniyor · ${(l / 1e6).toFixed(1)}${t > 0 ? ` / ${(t / 1e6).toFixed(1)}` : ''} MB`));
+        this.loading.progress(null);
+        if (token !== this.loadToken) return;
+      }
+      this.loading.stage('Trafik modelleri hazırlanıyor…');
+      await loadTrafficModels();
+      if (token !== this.loadToken) return;
       const physics = await PhysicsWorld.create();
       if (token !== this.loadToken) return physics.dispose();
       this.loading.stage('Pist oluşturuluyor…');
@@ -314,6 +334,24 @@ export class App {
     if (!this.showroom || carId === this.showroomCar) return;
     this.showroomCar = carId;
     this.showroom.setCar(getCar(carId).definition);
+    if (this.flow.state === 'GARAGE') this.prefetchNeighbours(carId);
+  }
+
+  /** Garage: once the shown car is in, the previous and next ones load in the background (never all of them). */
+  private prefetchNeighbours(carId: string): void {
+    const url = (id: string) => getCar(id).definition.visual.model?.url;
+    const shown = url(carId);
+    const i = CAR_REGISTRY.findIndex((c) => c.id === carId);
+    const n = CAR_REGISTRY.length;
+    const neighbours = [CAR_REGISTRY[(i + 1) % n].id, CAR_REGISTRY[(i - 1 + n) % n].id];
+    void (shown ? vehicleAssets.prefetch(shown) : Promise.resolve()).then(() => {
+      // Still on this car: the user may have moved on while it loaded.
+      if (this.showroomCar !== carId || this.flow.state !== 'GARAGE') return;
+      for (const id of neighbours) {
+        const u = url(id);
+        if (u) void vehicleAssets.prefetch(u);
+      }
+    });
   }
 
   private disposeShowroom(): void {

@@ -4,6 +4,13 @@ export type TrackId = 'test' | 'nordschleife' | 'autobahn' | 'city';
 export const TRACK_IDS: readonly TrackId[] = ['test', 'nordschleife', 'autobahn', 'city'];
 export const DEFAULT_TRACK: TrackId = 'test';
 
+/** Ids of removed or renamed worlds (old links, saved profiles) → the world that replaced them. */
+const TRACK_ALIASES: Record<string, TrackId> = { city_v2: 'city' };
+
+export function canonicalTrackId(v: string | null): string | null {
+  return v !== null ? (TRACK_ALIASES[v] ?? v) : null;
+}
+
 export function isTrackId(v: string | null): v is TrackId {
   return v !== null && (TRACK_IDS as readonly string[]).includes(v);
 }

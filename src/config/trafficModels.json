@@ -1,52 +1,303 @@
 {
-  "taxi": {
-    "length": 5.085,
-    "width": 1.999,
-    "height": 1.504
+  "lorry_tarp": {
+    "kind": "truck",
+    "length": 9.807,
+    "width": 2.338,
+    "height": 2.802,
+    "paint": 10855578
   },
-  "police": {
-    "length": 5.172,
-    "width": 1.999,
-    "height": 1.878
+  "lorry_box": {
+    "kind": "truck",
+    "length": 10.46,
+    "width": 2.361,
+    "height": 2.837,
+    "paint": 14476521
   },
-  "postvan": {
-    "length": 5.347,
-    "width": 2.186,
-    "height": 1.978
+  "sedan_rusty": {
+    "kind": "car",
+    "length": 4.706,
+    "width": 2.006,
+    "height": 1.488,
+    "paint": 13224136
   },
-  "ambulance": {
-    "length": 6.9,
-    "width": 2.59,
-    "height": 2.574
+  "sedan_green": {
+    "kind": "car",
+    "length": 4.026,
+    "width": 1.867,
+    "height": 1.594,
+    "paint": 8103511
+  },
+  "box_truck": {
+    "kind": "lightTruck",
+    "length": 5.914,
+    "width": 2.318,
+    "height": 2.9,
+    "paint": 13028564
+  },
+  "box_truck_small": {
+    "kind": "lightTruck",
+    "length": 4.5,
+    "width": 2.183,
+    "height": 2.532,
+    "paint": 14145754
+  },
+  "sedan_silver": {
+    "kind": "car",
+    "length": 4.195,
+    "width": 1.852,
+    "height": 1.426,
+    "paint": 7897994
+  },
+  "sedan_white_old": {
+    "kind": "car",
+    "length": 4.182,
+    "width": 1.789,
+    "height": 1.433,
+    "paint": 7960953
+  },
+  "flatbed_truck": {
+    "kind": "lightTruck",
+    "length": 5.303,
+    "width": 2.521,
+    "height": 2.615,
+    "paint": 15066854
+  },
+  "sedan_grey": {
+    "kind": "car",
+    "length": 4.234,
+    "width": 1.87,
+    "height": 1.435,
+    "paint": 2963523
+  },
+  "flatbed_small": {
+    "kind": "lightTruck",
+    "length": 4.715,
+    "width": 1.961,
+    "height": 1.905,
+    "paint": 13028563
+  },
+  "hatch_green": {
+    "kind": "car",
+    "length": 4.203,
+    "width": 2.207,
+    "height": 2.057,
+    "paint": 1877785
+  },
+  "sedan_orange": {
+    "kind": "car",
+    "length": 4.104,
+    "width": 1.78,
+    "height": 1.497,
+    "paint": 14296585
+  },
+  "suv_boxy": {
+    "kind": "suv",
+    "length": 4.676,
+    "width": 2.334,
+    "height": 2.094,
+    "paint": 1974050
+  },
+  "van_high": {
+    "kind": "van",
+    "length": 5.419,
+    "width": 2.169,
+    "height": 2.411,
+    "paint": 16382458
+  },
+  "sedan_maroon": {
+    "kind": "car",
+    "length": 4.144,
+    "width": 1.656,
+    "height": 1.534,
+    "paint": 7028037
+  },
+  "van_box": {
+    "kind": "van",
+    "length": 5.492,
+    "width": 2.153,
+    "height": 2.314,
+    "paint": 16316664
+  },
+  "offroad_white": {
+    "kind": "suv",
+    "length": 3.861,
+    "width": 1.849,
+    "height": 1.738,
+    "paint": 16448507
+  },
+  "sedan_blue": {
+    "kind": "car",
+    "length": 5.187,
+    "width": 2.12,
+    "height": 1.675,
+    "paint": 3228493
+  },
+  "van_white": {
+    "kind": "van",
+    "length": 4.83,
+    "width": 2.132,
+    "height": 1.806,
+    "paint": 14277081
+  },
+  "pickup_white": {
+    "kind": "pickup",
+    "length": 5.134,
+    "width": 2.129,
+    "height": 1.645,
+    "paint": 14275785
+  },
+  "offroad_green": {
+    "kind": "suv",
+    "length": 3.722,
+    "width": 1.748,
+    "height": 1.758,
+    "paint": 4543550
+  },
+  "flatbed_van": {
+    "kind": "lightTruck",
+    "length": 5.934,
+    "width": 2.334,
+    "height": 2.475,
+    "paint": 7965080
+  },
+  "sedan_pink": {
+    "kind": "car",
+    "length": 4.601,
+    "width": 1.964,
+    "height": 1.581,
+    "paint": 11152429
+  },
+  "suv_black": {
+    "kind": "suv",
+    "length": 5.04,
+    "width": 2.109,
+    "height": 1.778,
+    "paint": 1974050
+  },
+  "sedan_red": {
+    "kind": "car",
+    "length": 4.664,
+    "width": 1.85,
+    "height": 1.538,
+    "paint": 10896726
+  },
+  "pickup_red": {
+    "kind": "pickup",
+    "length": 5.078,
+    "width": 1.99,
+    "height": 1.613,
+    "paint": 11154758
+  },
+  "minibus_yellow": {
+    "kind": "van",
+    "length": 6.057,
+    "width": 2.371,
+    "height": 2.595,
+    "paint": 12293178
+  },
+  "police_offroad": {
+    "kind": "police",
+    "length": 3.844,
+    "width": 1.963,
+    "height": 2.075,
+    "paint": 3561605
+  },
+  "hatch_blue": {
+    "kind": "car",
+    "length": 3.948,
+    "width": 1.867,
+    "height": 1.487,
+    "paint": 1328522
+  },
+  "hatch_white": {
+    "kind": "car",
+    "length": 4.091,
+    "width": 1.768,
+    "height": 1.333,
+    "paint": 16316921
+  },
+  "truck_military": {
+    "kind": "truck",
+    "length": 6.387,
+    "width": 2.662,
+    "height": 2.79,
+    "paint": 8023123
+  },
+  "sedan_red_small": {
+    "kind": "car",
+    "length": 4.035,
+    "width": 1.732,
+    "height": 1.302,
+    "paint": 12146022
+  },
+  "hatch_lightblue": {
+    "kind": "car",
+    "length": 3.687,
+    "width": 1.659,
+    "height": 1.295,
+    "paint": 4021621
+  },
+  "police_small": {
+    "kind": "police",
+    "length": 3.578,
+    "width": 1.779,
+    "height": 2.021,
+    "paint": 1991060
   },
   "citybus": {
-    "length": 9.951,
-    "width": 2.535,
-    "height": 2.516
+    "kind": "bus",
+    "length": 11.346,
+    "width": 3.123,
+    "height": 2.951,
+    "paint": 15132902
   },
-  "schoolbus": {
-    "length": 7.921,
-    "width": 2.552,
-    "height": 2.67
+  "hatch_mint": {
+    "kind": "car",
+    "length": 3.409,
+    "width": 1.604,
+    "height": 1.301,
+    "paint": 5084995
   },
-  "garbagetruck": {
-    "length": 7.656,
-    "width": 2.62,
-    "height": 2.831
+  "hatch_red": {
+    "kind": "car",
+    "length": 3.565,
+    "width": 1.745,
+    "height": 1.277,
+    "paint": 8979731
   },
-  "servicetruck": {
-    "length": 5.323,
-    "width": 2.268,
-    "height": 2.194
+  "hatch_red_2": {
+    "kind": "car",
+    "length": 3.911,
+    "width": 1.671,
+    "height": 1.273,
+    "paint": 9639706
   },
-  "towtruck": {
-    "length": 6.942,
-    "width": 2.376,
-    "height": 2.394
+  "van_small_red": {
+    "kind": "van",
+    "length": 4.019,
+    "width": 1.858,
+    "height": 1.764,
+    "paint": 16148600
   },
-  "firetruck": {
-    "length": 8.355,
-    "width": 2.59,
-    "height": 2.933
+  "pickup_brown": {
+    "kind": "pickup",
+    "length": 4.604,
+    "width": 1.949,
+    "height": 1.615,
+    "paint": 3683878
+  },
+  "sedan_white": {
+    "kind": "car",
+    "length": 4.061,
+    "width": 1.766,
+    "height": 1.202,
+    "paint": 16316921
+  },
+  "hatch_grey": {
+    "kind": "car",
+    "length": 3.78,
+    "width": 1.777,
+    "height": 1.294,
+    "paint": 16382457
   }
 }

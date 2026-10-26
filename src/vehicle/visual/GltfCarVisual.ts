@@ -1,15 +1,13 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { NodeName, VehicleConfig, VehicleModelConfig, VehicleVisualConfig } from '../../config/vehicleTypes';
 import { DEG2RAD } from '../../utils/math';
 import { PlaceholderCarVisual } from './PlaceholderCarVisual';
 import type { VehicleVisual, VehicleVisualState } from './VehicleVisual';
+import { VehicleAssetCache, vehicleAssets, type SceneLoader } from './VehicleAssetCache';
 import { LampGroup, WheelRig } from './VisualParts';
 
-/** Anything that turns a URL into a glTF scene (GLTFLoader, a cache, a test stub...). */
-export type ModelLoader = (url: string) => Promise<{ scene: THREE.Object3D }>;
-
-const defaultLoader: ModelLoader = (url) => new GLTFLoader().loadAsync(url);
+/** Anything that turns a URL into a glTF scene (GLTFLoader, a test stub...). */
+export type ModelLoader = SceneLoader;
 
 const WHEEL_KEYS = ['wheelFL', 'wheelFR', 'wheelRL', 'wheelRR'] as const;
 
@@ -20,6 +18,10 @@ const WHEEL_KEYS = ['wheelFL', 'wheelFR', 'wheelRL', 'wheelRR'] as const;
  * mapping fails, so a broken asset never leaves the player without a car.
  * Logical parts (wheels, steering wheel, lamps) are found by the names given in
  * the model config, so every model can keep its own naming.
+ *
+ * The model comes from the shared VehicleAssetCache (a clone sharing the cached
+ * geometries, materials and textures); a plain loader (tests) gets a private
+ * cache that frees the model when this visual is disposed.
  */
 export class GltfCarVisual implements VehicleVisual {
   readonly root = new THREE.Group();
@@ -32,16 +34,19 @@ export class GltfCarVisual implements VehicleVisual {
 
   private readonly model: VehicleModelConfig;
   private fallback: PlaceholderCarVisual | null;
-  private container: THREE.Object3D | null = null;
   private wheels: WheelRig[] = [];
   private steeringWheel: { node: THREE.Object3D; base: THREE.Quaternion; axis: THREE.Vector3 } | null = null;
   private readonly headlights = new LampGroup(0.05);
-  private readonly brakeLights = new LampGroup(0.3);
+  // Brake lights are red whatever the lens's own emissive colour is.
+  private readonly brakeLights = new LampGroup(0.3, true);
   private readonly reverseLights = new LampGroup(0);
   private disposed = false;
+  private readonly assets: VehicleAssetCache;
+  /** Holding a clone from `assets` (released on dispose). */
+  private acquired = false;
   private readonly _q = new THREE.Quaternion();
 
-  constructor(physics: VehicleConfig, visual: VehicleVisualConfig, loader: ModelLoader = defaultLoader) {
+  constructor(physics: VehicleConfig, visual: VehicleVisualConfig, loader: ModelLoader | VehicleAssetCache = vehicleAssets) {
     if (!visual.model) throw new Error('glTF visual needs visual.model');
     this.model = visual.model;
     this.fallback = new PlaceholderCarVisual(physics, visual);
@@ -50,13 +55,20 @@ export class GltfCarVisual implements VehicleVisual {
     if (hood) this.hoodCameraOffset.set(hood.x, hood.y, hood.z);
     else this.hoodCameraOffset.copy(this.fallback.hoodCameraOffset);
 
-    this.ready = loader(this.model.url).then(
-      (gltf) => {
-        if (this.disposed) return false;
+    this.assets = loader instanceof VehicleAssetCache ? loader : new VehicleAssetCache(loader, 0);
+    this.ready = this.assets.acquire(this.model.url).then(
+      (scene) => {
+        if (this.disposed) {
+          this.assets.release(this.model.url);
+          return false;
+        }
+        this.acquired = true;
         try {
-          this.applyModel(gltf.scene);
+          this.applyModel(scene);
           return true;
         } catch (err) {
+          this.acquired = false;
+          this.assets.release(this.model.url);
           this.useFallback(err);
           return false;
         }
@@ -129,7 +141,6 @@ export class GltfCarVisual implements VehicleVisual {
       this.fallback.dispose();
       this.fallback = null;
     }
-    this.container = container;
     this.root.position.copy(savedPos);
     this.root.quaternion.copy(savedQuat);
     parent?.add(this.root);
@@ -161,13 +172,11 @@ export class GltfCarVisual implements VehicleVisual {
   dispose(): void {
     this.disposed = true;
     this.fallback?.dispose();
-    this.container?.traverse((obj) => {
-      const mesh = obj as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      mesh.geometry.dispose();
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      for (const m of mats) m.dispose();
-    });
+    // Geometries, materials and textures belong to the cache; only the lamp material clones are this visual's.
+    if (this.acquired) {
+      this.acquired = false;
+      this.assets.release(this.model.url);
+    }
     this.headlights.dispose();
     this.brakeLights.dispose();
     this.reverseLights.dispose();

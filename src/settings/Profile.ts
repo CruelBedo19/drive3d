@@ -1,3 +1,4 @@
+import { canonicalTrackId } from '../config/tracks';
 import { safeLocalStorage } from './Settings';
 
 /**
@@ -42,7 +43,7 @@ export function sanitizeProfile(raw: unknown, rules: ProfileRules): Profile {
   if (time === 'custom' && customHour === null) time = 'noon';
   if (customHour !== null && time !== 'custom') time = 'custom';
   return {
-    trackId: pick(src.trackId, rules.trackIds, rules.defaults.trackId),
+    trackId: pick(canonicalTrackId(typeof src.trackId === 'string' ? src.trackId : null) ?? src.trackId, rules.trackIds, rules.defaults.trackId),
     carId: pick(src.carId, rules.carIds, rules.defaults.carId),
     setup: pick(src.setup, rules.setups, rules.defaults.setup),
     weather: pick(src.weather, WEATHER_KINDS, 'clear'),

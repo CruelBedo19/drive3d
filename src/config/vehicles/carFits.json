@@ -12,7 +12,7 @@
     "height": 1.458,
     "minY": 0,
     "scale": 1.00105,
-    "sizeMB": 2.43
+    "sizeMB": 1.33
   },
   "bmw_m4_f82": {
     "wheelRadius": 0.303,
@@ -27,7 +27,7 @@
     "height": 1.35,
     "minY": 0,
     "scale": 0.25993,
-    "sizeMB": 1.07
+    "sizeMB": 0.52
   },
   "amg_c63s_w205": {
     "wheelRadius": 0.277,
@@ -42,7 +42,7 @@
     "height": 1.423,
     "minY": -0.052,
     "scale": 0.25282,
-    "sizeMB": 7.59
+    "sizeMB": 3.39
   },
   "amg_one": {
     "wheelRadius": 0.335,
@@ -57,6 +57,141 @@
     "height": 1.198,
     "minY": 0,
     "scale": 1.51631,
-    "sizeMB": 2.17
+    "sizeMB": 1.38
+  },
+  "ferrari_f40": {
+    "wheelRadius": 0.325,
+    "wheelWidth": 0.344,
+    "wheelbase": 2.45,
+    "frontZ": 1.225,
+    "rearZ": -1.225,
+    "frontHalfTrack": 0.783,
+    "rearHalfTrack": 0.781,
+    "length": 4.399,
+    "width": 2.049,
+    "height": 1.137,
+    "minY": 0,
+    "scale": 0.97145,
+    "sizeMB": 0.95
+  },
+  "porsche_911_gt3_rsr": {
+    "wheelRadius": 0.367,
+    "wheelWidth": 0.329,
+    "wheelbase": 2.51,
+    "frontZ": 1.255,
+    "rearZ": -1.255,
+    "frontHalfTrack": 0.882,
+    "rearHalfTrack": 0.805,
+    "length": 4.744,
+    "width": 2.088,
+    "height": 1.343,
+    "minY": 0,
+    "scale": 0.26146,
+    "sizeMB": 0.76
+  },
+  "audi_rs6_c8": {
+    "wheelRadius": 0.367,
+    "wheelWidth": 0.309,
+    "wheelbase": 2.929,
+    "frontZ": 1.465,
+    "rearZ": -1.464,
+    "frontHalfTrack": 0.824,
+    "rearHalfTrack": 0.813,
+    "length": 4.993,
+    "width": 2.114,
+    "height": 1.496,
+    "minY": -0.021,
+    "scale": 100.01708,
+    "sizeMB": 2.82
+  },
+  "bmw_m3_g81": {
+    "wheelRadius": 0.361,
+    "wheelWidth": 0.308,
+    "wheelbase": 2.857,
+    "frontZ": 1.428,
+    "rearZ": -1.428,
+    "frontHalfTrack": 0.785,
+    "rearHalfTrack": 0.785,
+    "length": 4.789,
+    "width": 2.071,
+    "height": 1.474,
+    "minY": 0,
+    "scale": 0.99547,
+    "sizeMB": 2.66
+  },
+  "honda_civic_ek9": {
+    "wheelRadius": 0.306,
+    "wheelWidth": 0.259,
+    "wheelbase": 2.62,
+    "frontZ": 1.31,
+    "rearZ": -1.31,
+    "frontHalfTrack": 0.716,
+    "rearHalfTrack": 0.75,
+    "length": 4.161,
+    "width": 1.944,
+    "height": 1.351,
+    "minY": 0,
+    "scale": 1.05748,
+    "sizeMB": 1.43
+  },
+  "honda_nsx": {
+    "wheelRadius": 0.296,
+    "wheelWidth": 0.235,
+    "wheelbase": 2.53,
+    "frontZ": 1.265,
+    "rearZ": -1.265,
+    "frontHalfTrack": 0.779,
+    "rearHalfTrack": 0.779,
+    "length": 4.417,
+    "width": 1.955,
+    "height": 1.16,
+    "minY": 0,
+    "scale": 1.4768,
+    "sizeMB": 0.7
+  },
+  "maybach_gls600": {
+    "wheelRadius": 0.421,
+    "wheelWidth": 0.301,
+    "wheelbase": 3.135,
+    "frontZ": 1.567,
+    "rearZ": -1.567,
+    "frontHalfTrack": 0.823,
+    "rearHalfTrack": 0.823,
+    "length": 5.183,
+    "width": 2.118,
+    "height": 1.858,
+    "minY": 0,
+    "scale": 1.02531,
+    "sizeMB": 1.99
+  },
+  "bmw_m3_e36": {
+    "wheelRadius": 0.324,
+    "wheelWidth": 0.344,
+    "wheelbase": 2.7,
+    "frontZ": 1.35,
+    "rearZ": -1.35,
+    "frontHalfTrack": 0.71,
+    "rearHalfTrack": 0.726,
+    "length": 4.464,
+    "width": 1.821,
+    "height": 1.311,
+    "minY": 0,
+    "scale": 0.1939,
+    "sizeMB": 1.01
+  },
+  "brabus_g900": {
+    "wheelRadius": 0.418,
+    "wheelWidth": 0.324,
+    "wheelbase": 2.89,
+    "frontZ": 1.445,
+    "rearZ": -1.445,
+    "frontHalfTrack": 0.899,
+    "rearHalfTrack": 0.9,
+    "length": 4.878,
+    "width": 2.23,
+    "height": 2.067,
+    "minY": 0,
+    "scale": 1.01403,
+    "sizeMB": 7.11
   }
 }

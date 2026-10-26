@@ -47,9 +47,12 @@ export class LampGroup {
   private readonly lamps: LampMaterial[] = [];
   private on: boolean | null = null;
   private readonly offIntensity: number;
+  /** Always light in the given colour, even where the model has its own emissive (a white lens texture). */
+  private readonly forceColor: boolean;
 
-  constructor(offIntensity = 0.05) {
+  constructor(offIntensity = 0.05, forceColor = false) {
     this.offIntensity = offIntensity;
+    this.forceColor = forceColor;
   }
 
   get size(): number {
@@ -67,7 +70,7 @@ export class LampGroup {
         const hasEmissive = clone.emissive.getHex() !== 0;
         this.lamps.push({
           material: clone,
-          onColor: hasEmissive ? clone.emissive.clone() : new THREE.Color(fallbackColor),
+          onColor: hasEmissive && !this.forceColor ? clone.emissive.clone() : new THREE.Color(fallbackColor),
           onIntensity: Math.max(clone.emissiveIntensity, 1.5),
         });
         return clone;

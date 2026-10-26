@@ -2,7 +2,7 @@ import { CHASE_CLOSE, CHASE_NORMAL, CameraRig, ChaseCamera, HoodCamera, type Cam
 import { bindingCode, updateCameraInput } from '../camera/cameraInput';
 import { autobahnSpeedPatch } from '../config/autobahnTune';
 import type { CarEntry } from '../config/carRegistry';
-import { SETUPS, applySetup, isSetupId, type SetupId } from '../config/setups';
+import { applySetup, isSetupId, setupFor, type SetupId } from '../config/setups';
 import type { AdminHost } from '../admin/AdminHost';
 import { AdminPanel } from '../admin/AdminPanel';
 import { assignDeep } from '../admin/configPath';
@@ -27,6 +27,7 @@ import * as THREE from 'three';
 import { TrafficDebugView, type TrafficDebugFlags } from '../traffic/TrafficDebugView';
 import { TRAFFIC_DENSITY_LABELS, TRAFFIC_DENSITY_STEPS } from '../config/traffic';
 import { TrafficSystem } from '../traffic/TrafficSystem';
+import { CityTrafficSystem } from '../traffic/city/CityTrafficSystem';
 import { TrafficVisuals } from '../traffic/TrafficVisuals';
 import { createTrack } from '../world/createTrack';
 import type { TrackView } from '../world/Track';
@@ -100,8 +101,8 @@ export class Game implements AdminHost {
   private settings: Readonly<GameSettings>;
   private mapRevision: number | undefined;
   private disposed = false;
-  /** AI traffic (worlds with a lane network) with its drawing, debug view and minimap buffers. */
-  traffic: TrafficSystem | null = null;
+  /** AI traffic (Autobahn lanes or the town's lane graph) with its drawing, debug view (Autobahn) and minimap buffers. */
+  traffic: TrafficSystem | CityTrafficSystem | null = null;
   private trafficVisuals: TrafficVisuals | null = null;
   private trafficDebugView: TrafficDebugView | null = null;
   private trafficClock = 0;
@@ -210,7 +211,7 @@ export class Game implements AdminHost {
   }
 
   baseConfig(setup: SetupId): VehicleConfig {
-    const config = applySetup(this.car.definition.physics, SETUPS[setup]);
+    const config = applySetup(this.car.definition.physics, setupFor(this.car.definition.physics, setup));
     // Autobahn only: the high-speed pack (~340 km/h); every other map drives the setup as is.
     return this.trackId === 'autobahn' ? applySetup(config, autobahnSpeedPatch(config)) : config;
   }
@@ -264,6 +265,7 @@ export class Game implements AdminHost {
   trafficDebug(): { stats: Record<string, string | number>; selected: Record<string, string | number> | null } | null {
     const t = this.traffic;
     if (!t) return null;
+    if (t instanceof CityTrafficSystem) return this.cityTrafficDebug(t);
     const s = t.stats();
     const stats: Record<string, string | number> = {
       'Aktif araç': s.active,
@@ -297,6 +299,42 @@ export class Game implements AdminHost {
     return { stats, selected };
   }
 
+  private cityTrafficDebug(t: CityTrafficSystem): { stats: Record<string, string | number>; selected: Record<string, string | number> | null } {
+    const s = t.stats();
+    const held = Object.entries(s.held)
+      .map(([why, n]) => `${why} ${n}`)
+      .join(', ');
+    const stats: Record<string, string | number> = {
+      'Aktif araç': s.active,
+      'Yakın / orta / uzak': `${s.near} / ${s.medium} / ${s.far}`,
+      'Spawn / despawn': `${s.spawned} / ${s.despawned}`,
+      'Ortalama hız (km/h)': s.avgSpeedKmh.toFixed(0),
+      'Kavşakta bekleyen': held || '—',
+      'Kavşağa giriş': s.entries,
+      'Kilitlenip kaldırılan': s.stuck,
+      Kaza: s.crashes,
+      'Çarpışma gövdesi': s.bodies,
+      'Güncelleme ms (adım / kare)': `${s.updateMs.toFixed(3)} / ${s.renderMs.toFixed(3)}`,
+    };
+    const v = t.selected;
+    const seg = v ? t.graph.segs[v.seg] : null;
+    const selected =
+      v && seg
+        ? {
+            Tür: v.klass.label,
+            'Hız (km/h)': (v.v * 3.6).toFixed(0),
+            'Hedef hız (km/h)': (t.wantedSpeed(v) * 3.6).toFixed(0),
+            Yer: seg.kind === 'lane' ? `${seg.cls} şerit ${seg.lane + 1}/${seg.lanes}` : `kavşakta (${{ straight: 'düz', left: 'sola', right: 'sağa' }[seg.turn]})`,
+            Bekleme: v.hold || '—',
+            'Öndeki araç (m)': Number.isFinite(v.leadGap) ? v.leadGap.toFixed(1) : '—',
+            'İstenen boşluk (m)': v.desiredGap.toFixed(1),
+            Durum: v.state,
+            Seviye: ['yakın', 'orta', 'uzak'][v.tier],
+          }
+        : null;
+    return { stats, selected };
+  }
+
   trafficSelectNext(): void {
     this.traffic?.selectNext();
   }
@@ -306,9 +344,24 @@ export class Game implements AdminHost {
   }
 
   private createTraffic(): void {
-    const net = this.sim.track.laneNetwork;
-    if (!net) return;
+    const track = this.sim.track;
     const p = this.vehicle.physics;
+    const probe = { position: p.position, velocity: p.linearVelocity, forward: p.forward, halfExtents: this.vehicle.config.chassis.halfExtents };
+    if (track.laneGraph) {
+      // Town traffic: same vehicles and drawing, its own drivers; it runs the signal plan's clock.
+      const clock = track as { signalTime: number };
+      const traffic = new CityTrafficSystem(this.sim.physics.world, track.laneGraph, clock, probe, track.seed ?? 2026, this.settings.traffic.density, this.settings.traffic.variety);
+      const visuals = new TrafficVisuals();
+      traffic.onSpawn = (v) => visuals.add(v);
+      traffic.onDespawn = (v) => visuals.remove(v);
+      this.ctx.renderer.scene.add(visuals.group);
+      this.traffic = traffic;
+      this.trafficVisuals = visuals;
+      this.sim.systems.push(traffic);
+      return;
+    }
+    const net = track.laneNetwork;
+    if (!net) return;
     const traffic = new TrafficSystem(this.sim.physics.world, net, { position: p.position, velocity: p.linearVelocity, forward: p.forward, halfExtents: this.vehicle.config.chassis.halfExtents }, net.gen.seed, this.settings.traffic.density, this.settings.traffic.variety, this.settings.traffic.cutIns);
     const visuals = new TrafficVisuals();
     traffic.onSpawn = (v) => visuals.add(v);
@@ -348,7 +401,7 @@ export class Game implements AdminHost {
     c.daylight = w.daylight;
     this.trafficClock += dt;
     this.trafficVisuals.update(alpha, this.trafficClock, camera, Math.max(w.night, 1 - w.daylight));
-    this.trafficDebugView?.update(t);
+    if (t instanceof TrafficSystem) this.trafficDebugView?.update(t);
     let n = 0;
     if (this.settings.traffic.minimapDots) {
       for (const v of t.vehicles) {
@@ -444,7 +497,11 @@ export class Game implements AdminHost {
     view.vegetationDistance = VEGETATION_DISTANCE[this.settings.graphics.vegetationDistance];
     view.fogColor = this.ctx.renderer.fog.color;
     view.visibility = this.weather.snapshot.visibility;
+    view.night = Math.max(this.weather.snapshot.night, 1 - this.weather.snapshot.daylight);
     view.cameraFar = camera.far;
+    camera.updateMatrixWorld();
+    this.viewFrustum.setFromProjectionMatrix(this.viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    view.frustum = this.viewFrustum;
     this.sim.track.update(view);
     this.updateTraffic(dt, alpha, camera.position);
     this.weather.setCover(this.sim.track.coverAt?.(camera.position) ?? 0);
@@ -508,6 +565,8 @@ export class Game implements AdminHost {
   }
 
   private readonly trackView: TrackView = { camera: new THREE.Vector3(), vegetationDistance: 450 };
+  private readonly viewFrustum = new THREE.Frustum();
+  private readonly viewProjection = new THREE.Matrix4();
 
   private readonly measureSample = { speedKmh: 0, forwardSpeed: 0, brake: 0, lateralG: 0, driftDeg: 0, distance: 0 };
 

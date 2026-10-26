@@ -10,7 +10,10 @@
  * Wheels are found by shape and position (round, low, at the corners); parts
  * inside a wheel spin with it unless they match `noSpin` (brake calipers).
  * Meshes holding both wheels of an axle are split into left / right halves.
- * Textures are resized and re-encoded as WebP. Measurements (wheelbase, track,
+ * Meshes of one part sharing a material are merged (fewer draw calls), and a
+ * recipe may simplify its geometry by region (`simplify`). Textures are resized
+ * and re-encoded as WebP; geometry is welded, quantised and meshopt-compressed
+ * (EXT_meshopt_compression: the game's loader needs the meshopt decoder). Measurements (wheelbase, track,
  * wheel radius, body size) go to src/config/vehicles/carFits.json, from which
  * each car's physics dimensions are set.
  *
@@ -18,10 +21,11 @@
  */
 import { Document, NodeIO, type Mesh, type Node, type Primitive, getBounds } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { clearNodeTransform, compactPrimitive, dedup, flatten, prune, textureCompress } from '@gltf-transform/functions';
+import { clearNodeTransform, compactPrimitive, dedup, flatten, join as joinPrimitives, meshopt, prune, textureCompress, weld } from '@gltf-transform/functions';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MeshoptEncoder, MeshoptSimplifier, type Flags } from 'meshoptimizer';
 import sharp from 'sharp';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,12 +44,43 @@ interface Recipe {
   exclude?: RegExp;
   /** Split meshes that contain both wheels of an axle into left / right. */
   splitAxles?: boolean;
+  /** Meshes (node or material name) holding parts of several wheels: split into the four corners first. */
+  wheelSplit?: RegExp;
   /** Lamp meshes by node or material name; head / tail decided by position (front / rear half). */
   lamps?: RegExp;
+  /** Head lamp meshes (node or material name): only their front half (z > 0) becomes HeadLights. */
+  headLamps?: RegExp;
+  /** Brake / tail lamp meshes: only their rear half (z < 0) becomes TailLights. */
+  tailLamps?: RegExp;
   steeringWheel?: RegExp;
   /** Longest texture side after resizing. */
   textureSize: number;
+  /** Merge the meshes of each part (body, each wheel, lamp group) that share a material: far fewer draw calls. */
+  merge?: boolean;
+  /** Region-aware simplification for heavy models (absolute errors in metres; see simplifyByRegion). */
+  simplify?: SimplifyRecipe;
 }
+
+interface SimplifyRecipe {
+  /** Cabin volume in the prepared frame (min, max corners): triangles inside it are interior. */
+  cabin: [[number, number, number], [number, number, number]];
+  /** Body outside the cabin: seams (normals / UVs) kept, so badges and decals stay put. */
+  exterior: number;
+  /** Wheel groups: may collapse across seams where normals / UVs barely change. */
+  wheels: number;
+  /** Seen only through the windows: collapses across seams more freely. */
+  interior: number;
+}
+
+/**
+ * Lamp materials picked from where each material's triangles sit (front / rear 0.5 m, height, side), colour
+ * and emissive, not from names alone; cars without a clear match have no mapping (the feature stays off).
+ */
+const LAMPS = {
+  // Emissive-textured lens material at both ends. Front only: lit at the rear, its white emissive texture
+  // turns a brake light orange-white instead of red, so the M4 has no brake light mapping.
+  m4: /^Puncheffnuminnernalphaalphaitapuncheffnuminnernalph1_diff$/,
+};
 
 const RECIPES: Recipe[] = [
   {
@@ -56,8 +91,9 @@ const RECIPES: Recipe[] = [
     lamps: /HeadLight|TailLight/i,
     steeringWheel: /^SteeringWheel/i,
     textureSize: 2048,
+    merge: true,
   },
-  { id: 'bmw_m4_f82', source: '2014_bmw_m4_f82.glb', rotateY: 180, wheelbase: 2.812, textureSize: 2048 },
+  { id: 'bmw_m4_f82', source: '2014_bmw_m4_f82.glb', rotateY: 180, wheelbase: 2.812, textureSize: 2048, merge: true, headLamps: LAMPS.m4 },
   {
     id: 'amg_c63s_w205',
     source: 'mercedes-amg_c_63_coupe_s_w205.glb',
@@ -66,6 +102,7 @@ const RECIPES: Recipe[] = [
     splitAxles: true,
     lamps: /vehiclelights/i,
     textureSize: 1024,
+    merge: true,
   },
   {
     id: 'amg_one',
@@ -75,7 +112,30 @@ const RECIPES: Recipe[] = [
     noSpin: /caliper/i,
     lamps: /brake_lamp/i,
     textureSize: 2048,
+    merge: true,
   },
+  // Second batch (assets-src/vehicles/arabalar/, Sketchfab "reduced" exports).
+  { id: 'porsche_911_gt3_rsr', source: 'arabalar/2022_porche_911_gt3_rsr-ressduced.glb', rotateY: 0, wheelbase: 2.51, textureSize: 1024, merge: true, tailLamps: /^Meshpart1Mtl$/ },
+  { id: 'audi_rs6_c8', source: 'arabalar/audi_rs_6_avant_c8-reduced.glb', rotateY: 0, wheelbase: 2.929, textureSize: 1024, merge: true, headLamps: /LightA_Material1$/, tailLamps: /LightA_Material1$|^red_glass$/ },
+  { id: 'bmw_m3_e36', source: 'arabalar/bmw_e36_m3.glb', rotateY: 0, wheelbase: 2.7, exclude: /^Scene$/, wheelSplit: /^(Tire|SeconadryColor|Textures)\.001$/, textureSize: 1024, merge: true, headLamps: /^(HeadLights|Light)$/, tailLamps: /^RearLights$/ },
+  { id: 'bmw_m3_g81', source: 'arabalar/bmw_m3_competition_tourning_g81-reduced.glb', rotateY: 0, wheelbase: 2.857, textureSize: 1024, merge: true, headLamps: /_(running_front|headlight_low|headlight_high)$/, tailLamps: /_(taillight|running_rear)$/ },
+  { id: 'ferrari_f40', source: 'arabalar/ferrari_f40-reduced.glb', rotateY: 0, wheelbase: 2.45, textureSize: 1024, merge: true, headLamps: /^(F40_Headlights|super_headlight)$/, tailLamps: /^super_brakelight$/ },
+  { id: 'honda_civic_ek9', source: 'arabalar/honda_civic_type_r_-98_free_asset-reduced.glb', rotateY: 0, wheelbase: 2.62, textureSize: 1024, merge: true, tailLamps: /^Glass_02_MAT$/ },
+  { id: 'honda_nsx', source: 'arabalar/honda_nsx_1990-reduced.glb', rotateY: 0, wheelbase: 2.53, textureSize: 1024, merge: true, tailLamps: /^Material\.009$/ },
+  {
+    id: 'brabus_g900',
+    source: 'arabalar/mercedes_amg_g900_by_brabus-reduced.glb',
+    rotateY: 0,
+    wheelbase: 2.89,
+    wheelSplit: /_wheel|michelin|rimdetail|diamondcutrim/i,
+    textureSize: 512,
+    merge: true,
+    headLamps: /^leather02_weave_18$/,
+    tailLamps: /^(plastic5_14|ExtWindowsGlass_1)$/,
+    // 355k triangles: a third of them in the cabin. The box stays inside the door panels and glass.
+    simplify: { cabin: [[-0.82, 0.6, -1.95], [0.82, 1.85, 0.75]], exterior: 0.001, wheels: 0.001, interior: 0.008 },
+  },
+  { id: 'maybach_gls600', source: 'arabalar/mersedes-_benz_maybach_gls_600-reduced.glb', rotateY: 0, wheelbase: 3.135, textureSize: 1024, merge: true, headLamps: /^lsiggls\.001$/, tailLamps: /^(gls_run\.001|etk800_glass\.002)$/ },
 ];
 
 const CORNERS = ['WheelFL', 'WheelFR', 'WheelRL', 'WheelRR'] as const;
@@ -151,21 +211,37 @@ async function prepare(recipe: Recipe, io: NodeIO): Promise<CarFit> {
     }
     meshNodes = listMeshNodes(scene);
   }
+  if (recipe.wheelSplit) {
+    const c = centre(all);
+    for (const n of [...meshNodes]) {
+      if (!matches(n, recipe.wheelSplit)) continue;
+      for (const half of splitNode(doc, scene, n, (p) => p[0] < c[0])) if (half) splitNode(doc, scene, half, (p) => p[2] < c[2]);
+    }
+    meshNodes = listMeshNodes(scene);
+  }
 
   // 4. Wheels: the biggest round low mesh near each corner is the tyre; parts inside its cylinder join it.
   all = unionBox(meshNodes.map(boundsOf));
   const mid = centre(all);
   const tyres = new Map<Corner, { node: Node; box: Box }>();
+  const candidates: { corner: Corner; box: Box }[] = [];
   for (const n of meshNodes) {
     const b = boundsOf(n);
     const s = size(b);
     const c = centre(b);
     if (!isRound(s, 'x') || c[1] - all.min[1] > height * 0.45 || s[1] < height * 0.2 || s[0] > s[1]) continue;
     const corner = cornerOf(c, mid);
+    candidates.push({ corner, box: b });
     const prev = tyres.get(corner);
     if (!prev || s[1] * s[2] > size(prev.box)[1] * size(prev.box)[2]) tyres.set(corner, { node: n, box: b });
   }
   if (tyres.size !== 4) throw new Error(`${recipe.id}: found ${tyres.size} wheels (${[...tyres.keys()].join(', ')})`);
+  // A tyre modelled as separate inner and outer walls: as big as each other, the wheel spans both.
+  for (const [corner, t] of tyres) {
+    const area = size(t.box)[1] * size(t.box)[2];
+    const same = candidates.filter((k) => k.corner === corner && size(k.box)[1] * size(k.box)[2] >= area * 0.97);
+    t.box = unionBox(same.map((k) => k.box));
+  }
 
   const wheelInfo = CORNERS.map((corner) => {
     const t = tyres.get(corner)!;
@@ -215,7 +291,14 @@ async function prepare(recipe: Recipe, io: NodeIO): Promise<CarFit> {
   const steeringParts: Node[] = [];
   for (const n of listMeshNodes(scene)) {
     if (wheelSet.has(n)) continue;
-    if (recipe.lamps && matches(n, recipe.lamps)) {
+    const head = recipe.headLamps && matches(n, recipe.headLamps);
+    const tail = recipe.tailLamps && matches(n, recipe.tailLamps);
+    if (head || tail) {
+      // Only the half at the lamp's own end; whatever the material also covers elsewhere stays body.
+      const [front, rear] = splitNode(doc, scene, n, (p) => p[2] > 0);
+      if (front) (head ? lampFront : body).addChild(front);
+      if (rear) (tail ? lampRear : body).addChild(rear);
+    } else if (recipe.lamps && matches(n, recipe.lamps)) {
       const b = boundsOf(n);
       // A lamp mesh spanning front and back is split by position.
       if (b.min[2] < -0.5 && b.max[2] > 0.5) {
@@ -244,10 +327,12 @@ async function prepare(recipe: Recipe, io: NodeIO): Promise<CarFit> {
   for (const n of scene.listChildren()) if (!n.getMesh() && n.listChildren().length === 0) n.dispose();
 
   // 7. Clean up and shrink.
+  await doc.transform(prune(), dedup(), ...(recipe.merge ? [joinPrimitives({ keepNamed: false }), prune()] : []), weld());
+  if (recipe.simplify) simplifyByRegion(doc, scene, recipe.simplify);
   await doc.transform(
     prune(),
-    dedup(),
     textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [recipe.textureSize, recipe.textureSize] }),
+    meshopt({ encoder: MeshoptEncoder, level: 'medium' }),
   );
 
   const outDir = join(ROOT, 'public/assets/vehicles', recipe.id);
@@ -282,6 +367,86 @@ async function prepare(recipe: Recipe, io: NodeIO): Promise<CarFit> {
     scale: round(scale, 5),
     sizeMB: round(sizeMB, 2),
   };
+}
+
+// --- simplification --------------------------------------------------------------------
+
+/**
+ * Splits every primitive's triangles into cabin / outside sets (by centroid) and simplifies each set on its own
+ * with the border between them locked, then puts them back into the same primitive: no extra draw calls, no
+ * cracks. Glass (alpha blend) is never touched; nothing is pruned, so no part disappears.
+ */
+function simplifyByRegion(doc: Document, scene: { listChildren(): Node[] }, s: SimplifyRecipe): void {
+  const [lo, hi] = s.cabin;
+  const inCabin = (p: number[]) => p[0] > lo[0] && p[0] < hi[0] && p[1] > lo[1] && p[1] < hi[1] && p[2] > lo[2] && p[2] < hi[2];
+  const before = { interior: 0, exterior: 0, wheels: 0 };
+  const after = { interior: 0, exterior: 0, wheels: 0 };
+  const walk = (n: Node, wheel: boolean) => {
+    const m = n.getWorldMatrix();
+    for (const prim of n.getMesh()?.listPrimitives() ?? []) {
+      if (prim.getMaterial()?.getAlphaMode() === 'BLEND') continue;
+      const pos = prim.getAttribute('POSITION')!;
+      const idx = prim.getIndices()!;
+      const inside: number[] = [];
+      const outside: number[] = [];
+      const p = [0, 0, 0];
+      for (let i = 0; i < idx.getCount(); i += 3) {
+        const c = [0, 0, 0];
+        for (let k = 0; k < 3; k++) {
+          pos.getElement(idx.getScalar(i + k), p);
+          for (let a = 0; a < 3; a++) c[a] += p[a] / 3;
+        }
+        const w = [0, 1, 2].map((a) => m[a] * c[0] + m[4 + a] * c[1] + m[8 + a] * c[2] + m[12 + a]);
+        (!wheel && inCabin(w) ? inside : outside).push(idx.getScalar(i), idx.getScalar(i + 1), idx.getScalar(i + 2));
+      }
+      const outKind = wheel ? 'wheels' : 'exterior';
+      const a = simplifySet(prim, inside, s.interior, 0.02);
+      const b = simplifySet(prim, outside, s[outKind], wheel ? 0.1 : 0);
+      before.interior += inside.length / 3;
+      before[outKind] += outside.length / 3;
+      after.interior += a.length / 3;
+      after[outKind] += b.length / 3;
+      const merged = new Uint32Array(a.length + b.length);
+      merged.set(a, 0);
+      merged.set(b, a.length);
+      idx.dispose();
+      prim.setIndices(doc.createAccessor().setType('SCALAR').setArray(pos.getCount() > 65535 ? merged : new Uint16Array(merged)));
+      compactPrimitive(prim);
+    }
+    for (const c of n.listChildren()) walk(c, wheel);
+  };
+  for (const n of scene.listChildren()) walk(n, n.getName().startsWith('Wheel'));
+  for (const k of ['interior', 'exterior', 'wheels'] as const) console.log(`  simplify ${k}: ${before[k]} → ${after[k]} triangles`);
+}
+
+/**
+ * meshoptimizer simplification of one triangle set, error in metres. `attributeWeight` > 0 lets it collapse
+ * across normal / UV seams (Permissive) while weighing how much they change; 0 keeps every seam.
+ */
+function simplifySet(prim: Primitive, set: number[], error: number, attributeWeight: number): Uint32Array {
+  const indices = new Uint32Array(set);
+  if (!(error > 0) || indices.length === 0) return indices;
+  const pos = prim.getAttribute('POSITION')!;
+  const count = pos.getCount();
+  const positions = new Float32Array(count * 3);
+  const el = [0, 0, 0];
+  for (let i = 0; i < count; i++) positions.set(pos.getElement(i, el), i * 3);
+  const flags: Flags[] = ['LockBorder', 'ErrorAbsolute'];
+  if (attributeWeight > 0) {
+    const nrm = prim.getAttribute('NORMAL');
+    const uv = prim.getAttribute('TEXCOORD_0');
+    const stride = (nrm ? 3 : 0) + (uv ? 2 : 0);
+    if (stride > 0) {
+      const attrs = new Float32Array(count * stride);
+      for (let i = 0; i < count; i++) {
+        let o = i * stride;
+        if (nrm) for (const v of nrm.getElement(i, el)) attrs[o++] = v;
+        if (uv) for (const v of uv.getElement(i, [0, 0])) attrs[o++] = v;
+      }
+      return MeshoptSimplifier.simplifyWithAttributes(indices, positions, 3, attrs, stride, new Array(stride).fill(attributeWeight), null, 0, error, [...flags, 'Permissive'])[0];
+    }
+  }
+  return MeshoptSimplifier.simplify(indices, positions, 3, 0, error, flags)[0];
 }
 
 // --- helpers -------------------------------------------------------------------------
@@ -411,7 +576,8 @@ const round = (v: number, d = 3) => Math.round(v * 10 ** d) / 10 ** d;
 
 async function main(): Promise<void> {
   const only = process.argv[2];
-  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
+  await Promise.all([MeshoptEncoder.ready, MeshoptSimplifier.ready]);
+  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.encoder': MeshoptEncoder });
   const fits: Record<string, CarFit> = existsSync(FITS) ? JSON.parse(readFileSync(FITS, 'utf8')) : {};
   for (const r of RECIPES) {
     if (only && r.id !== only) continue;

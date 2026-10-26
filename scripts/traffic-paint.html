@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Traffic paint</title>
+  </head>
+  <body>
+    <script type="module">
+      // Renders every traffic model from a few angles in flat, even light and takes the colour covering the most of
+      // its body (near-black left out, a clear colour preferred over the light grey of glass): the paint of its low-poly stand-in. Driven by
+      // scripts/traffic-paint.mjs, which writes the result into src/config/trafficModels.json.
+      import * as THREE from 'three';
+      import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+      import MODELS from '/src/config/trafficModels.json';
+      const S = 96;
+      const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
+      renderer.setSize(S, S);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.NoToneMapping;
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xff00ff);
+      // Even light from everywhere: the base colour shows as it is.
+      scene.add(new THREE.AmbientLight(0xffffff, Math.PI));
+      const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+      const loader = new GLTFLoader();
+      const out = {};
+      const pixels = new Uint8Array(S * S * 4);
+      for (const id of Object.keys(MODELS)) {
+        const gltf = await loader.loadAsync(`/assets/traffic/${id}.glb`);
+        const root = gltf.scene;
+        root.traverse((o) => {
+          if (!o.isMesh) return;
+          for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+            m.envMap = null;
+            m.metalness = 0;
+            m.roughness = 1;
+            m.transparent = false;
+          }
+        });
+        scene.add(root);
+        const box = new THREE.Box3().setFromObject(root);
+        const size = box.getSize(new THREE.Vector3());
+        const c = box.getCenter(new THREE.Vector3());
+        const bins = new Map();
+        let dark = 0;
+        // Left and right sides, from above, front-left and rear-right (upper three quarters of the body only).
+        const views = [
+          [1, 0.15, 0],
+          [-1, 0.15, 0],
+          [0, 1, 0.001],
+          [0.7, 0.5, 0.7],
+          [-0.7, 0.5, -0.7],
+        ];
+        for (const [x, y, z] of views) {
+          const r = Math.max(size.x, size.y, size.z) * 0.6;
+          camera.left = -r;
+          camera.right = r;
+          camera.top = r;
+          camera.bottom = -r;
+          camera.updateProjectionMatrix();
+          camera.position.set(c.x + x * 20, c.y + y * 20, c.z + z * 20);
+          camera.lookAt(c);
+          renderer.render(scene, camera);
+          renderer.getContext().readPixels(0, 0, S, S, renderer.getContext().RGBA, renderer.getContext().UNSIGNED_BYTE, pixels);
+          for (let i = 0; i < S * S; i++) {
+            const [R, G, B] = [pixels[i * 4], pixels[i * 4 + 1], pixels[i * 4 + 2]];
+            if (R > 240 && G < 20 && B > 240) continue;
+            // Lower quarter of the frame in the side views: wheels and sills.
+            if (y < 0.5 && Math.floor(i / S) < S * 0.35) continue;
+            if (Math.max(R, G, B) < 45) {
+              dark++;
+              continue;
+            }
+            const key = ((R >> 4) << 8) | ((G >> 4) << 4) | (B >> 4);
+            const b = bins.get(key) ?? { n: 0, r: 0, g: 0, b: 0 };
+            b.n++;
+            b.r += R;
+            b.g += G;
+            b.b += B;
+            bins.set(key, b);
+          }
+        }
+        // Glass renders light grey and covers a lot: a coloured paint wins if it covers a fair share as well.
+        let best = null;
+        let bestColour = null;
+        for (const b of bins.values()) {
+          if (!best || b.n > best.n) best = b;
+          const [R, G, B] = [b.r / b.n, b.g / b.n, b.b / b.n];
+          const sat = (Math.max(R, G, B) - Math.min(R, G, B)) / Math.max(1, Math.max(R, G, B));
+          if (sat > 0.3 && (!bestColour || b.n > bestColour.n)) bestColour = b;
+        }
+        if (bestColour && bestColour.n > best.n * 0.15) best = bestColour;
+        // A black car: more near-black than any colour (tyres and trim are mostly cut off with the lower frame).
+        else if (dark > (best?.n ?? 0) * 1.5) best = { n: 1, r: 0x1e, g: 0x1f, b: 0x22 };
+        out[id] = best ? (Math.round(best.r / best.n) << 16) | (Math.round(best.g / best.n) << 8) | Math.round(best.b / best.n) : 0x808080;
+        scene.remove(root);
+      }
+      window.__paints = out;
+    </script>
+  </body>
+</html>

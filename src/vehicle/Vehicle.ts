@@ -17,6 +17,11 @@ const DIRECTION_CHANGE_SPEED = 1.0;
 const IDLE_TO_NEUTRAL = 0.6;
 /** Brake applied automatically when stopped with no input (keeps the car parked). */
 const HOLD_BRAKE = 0.25;
+/**
+ * Braking to a stop with S (or W in reverse) keeps the car stopped: the other direction engages only when the key
+ * is pressed again, or after it has been held this long at a standstill (s).
+ */
+const STOP_HOLD = 0.8;
 /** Recovery strength while the slide is still growing (vs. 1 once it shrinks). */
 const RECOVERY_GROWING_FACTOR = 0.8;
 
@@ -69,6 +74,9 @@ export class Vehicle {
   private readonly _v = new THREE.Vector3();
   private readonly _r = new THREE.Vector3();
   private idleTime = 0;
+  /** Braking to a stop: hold the car until the brake key is released (or held STOP_HOLD at a standstill). */
+  private stopHold = false;
+  private stopHoldTime = 0;
   private prevSlip = 0;
   /** Smoothed slide-recovery strength (see updateRecovery). */
   recoveryLevel = 0;
@@ -115,10 +123,22 @@ export class Vehicle {
     const wantsForward = controls.throttle > 0.05;
     const wantsBack = controls.brake > 0.05;
 
+    // The key that brakes is released: the next press may change direction.
+    const braking = gb.gear === GEAR_REVERSE ? wantsForward : wantsBack;
+    if (!braking) {
+      this.stopHold = false;
+      this.stopHoldTime = 0;
+    }
     if (gb.gear === GEAR_REVERSE) {
       if (wantsForward) {
-        if (v < -DIRECTION_CHANGE_SPEED) brake = controls.throttle;
-        else gb.select(1);
+        if (v < -DIRECTION_CHANGE_SPEED) {
+          brake = controls.throttle;
+          this.stopHold = true;
+        } else if (this.stopHold && (this.stopHoldTime += dt) < STOP_HOLD) brake = 1;
+        else {
+          this.stopHold = false;
+          gb.select(1);
+        }
       } else {
         throttle = controls.brake;
       }
@@ -128,7 +148,12 @@ export class Vehicle {
       if (wantsBack) {
         if (v > DIRECTION_CHANGE_SPEED || wantsForward) {
           brake = controls.brake;
+          if (!wantsForward) this.stopHold = true;
+        } else if (this.stopHold && (this.stopHoldTime += dt) < STOP_HOLD) {
+          // Braked to a stop: stay stopped (no rolling back into reverse) until S is pressed again.
+          brake = 1;
         } else {
+          this.stopHold = false;
           gb.select(GEAR_REVERSE);
           throttle = controls.brake;
         }
@@ -251,6 +276,8 @@ export class Vehicle {
     this.powertrain.reset();
     this.steering.reset();
     this.idleTime = 0;
+    this.stopHold = false;
+    this.stopHoldTime = 0;
     this.recoveryLevel = 0;
     this.prevSlip = 0;
     this.snapInterpolation();

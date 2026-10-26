@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import MODEL_SIZES from '../config/trafficModels.json';
 import type { TrafficModelId } from '../config/traffic';
+import { withoutTransmission } from '../vehicle/visual/VehicleAssetCache';
 
 /** One drawable piece of a traffic model: geometry in the model's frame and its material. */
 export interface TrafficModelPart {
@@ -39,7 +40,7 @@ export function loadTrafficModels(onLoaded?: (id: TrafficModelId) => void): Prom
           const mesh = o as THREE.Mesh;
           if (!mesh.isMesh) return;
           const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
-          parts.push({ geometry, material: mesh.material });
+          parts.push({ geometry, material: Array.isArray(mesh.material) ? mesh.material.map(withoutTransmission) : withoutTransmission(mesh.material) });
         });
         library.set(id, parts);
       } catch (err) {
