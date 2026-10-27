@@ -411,11 +411,15 @@ function roadPoints(l: CityLayout): number[] {
 }
 
 /**
- * On the longest arterial road between two junctions, a third of the way along
- * (clear of both junctions), in the inner right lane, facing the longer stretch.
+ * Downtown, on the divided main road (3+3 arterial or boulevard, ≥ 60 m between junctions) nearest the downtown
+ * centre, a third of the way along (clear of both junctions), in the inner right lane, facing the longer stretch.
+ * (The longest arterial, used before, ran along the edge of town.)
  */
 function spawnPoint(l: CityLayout): { x: number; y: number; z: number; yaw: number } {
-  const e = l.edges.filter((q) => q.rank === 'arterial').sort((a, b) => b.length - a.length)[0];
+  const centre = l.districts.find((d) => d.kind === 'downtown') ?? { x: 0, z: 0 };
+  const mid = (q: LayoutEdge) => Math.hypot((l.nodes[q.a].x + l.nodes[q.b].x) / 2 - centre.x, (l.nodes[q.a].z + l.nodes[q.b].z) / 2 - centre.z);
+  const main = l.edges.filter((q) => (q.cls === 'arterial3' || q.cls === 'boulevard') && q.length >= 60);
+  const e = (main.length ? main : l.edges.filter((q) => q.rank === 'arterial')).sort((a, b) => mid(a) - mid(b))[0];
   const A = l.nodes[e.a];
   const B = l.nodes[e.b];
   const dx = (B.x - A.x) / e.length;
