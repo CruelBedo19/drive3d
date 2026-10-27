@@ -126,7 +126,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'cup',
     chassis: 'race',
     cog: 'low',
-    driftRearGrip: 1.06,
+    driftRearGrip: 1.12,
   },
   porsche_911_gt3_rsr: {
     // 4.2 flat-six (power as balanced for racing, ~515 PS); sequential 6-speed ratios est.
@@ -197,7 +197,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'sport',
     chassis: 'sport',
     cog: 'normal',
-    driftRearGrip: 1.06,
+    driftRearGrip: 0.98,
   },
   ferrari_f40: {
     // Gear ratios est. (5-speed manual, 324 km/h at the red line in 5th).
@@ -215,7 +215,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'classic',
     chassis: 'race',
     cog: 'low',
-    driftRearGrip: 1.06,
+    driftRearGrip: 0.90,
   },
   honda_civic_ek9: {
     massKg: 1110,
@@ -269,7 +269,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'touring',
     chassis: 'offroad',
     cog: 'high',
-    driftRearGrip: 0.90,
+    driftRearGrip: 1.10,
   },
   maybach_gls600: {
     massKg: 2785,
@@ -287,6 +287,6 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'touring',
     chassis: 'comfort',
     cog: 'high',
-    driftRearGrip: 0.98,
+    driftRearGrip: 0.94,
   },
 };
