@@ -6,7 +6,9 @@ import { Differential } from '../src/vehicle/powertrain/Differential';
 import { WHEEL_FL, WHEEL_FR, WHEEL_RL, WHEEL_RR } from '../src/vehicle/physics/WheelState';
 import { DEG2RAD, sampleCurveSmooth } from '../src/utils/math';
 import { corneringReport, driftAngleReport, mistakeReport } from './handling-report';
-import { bodySlipDeg, bodySlipSigned, buildConfig, check, finish, keyboardDrift, kmh, makeSim, runControls, section, upY, type Sim, type SimOptions } from './lib/sim';
+import { CAR_REGISTRY } from '../src/config/carRegistry';
+import { applySetup, setupFor } from '../src/config/setups';
+import { DT, bodySlipDeg, bodySlipSigned, buildConfig, check, finish, keyboardDrift, kmh, makeSim, runControls, section, upY, type Sim, type SimOptions } from './lib/sim';
 
 const NO_TC = { assists: { tractionControl: 0 } };
 
@@ -360,6 +362,55 @@ async function main(): Promise<void> {
     runControls(s, 3, () => {});
     const dx = Math.abs(s.vehicle.physics.position.x - x0);
     check('DRIFT: still straight and stable at 150 km/h', dx < 1 && Math.abs(s.vehicle.physics.angularVelocity.y) < 0.02, `lateral drift ${dx.toFixed(3)} m`);
+  }
+
+  section('Selectable cars (factory data): brakes, stopping, drift');
+  {
+    const cars = CAR_REGISTRY.map((c) => ({ id: c.id, physics: c.definition.physics }));
+    const brakeRows: string[] = [];
+    let worst = 0;
+    for (const c of cars) {
+      // Keyboard S from 100 km/h (input smoothing included) until stopped.
+      const s = await makeSim(false, 0, 0, 0, { override: structuredClone(c.physics) });
+      runControls(s, 0.25, () => {});
+      s.vehicle.physics.body.setLinvel({ x: 0, y: 0, z: 100 / 3.6 }, true);
+      for (const w of s.vehicle.physics.wheels) w.angularVelocity = 100 / 3.6 / s.config.wheel.radius;
+      const z0 = s.vehicle.physics.position.z;
+      s.keys.add('KeyS');
+      for (let i = 0; i < 6 * 120; i++) {
+        s.driving.update(DT);
+        s.vehicle.fixedUpdate(DT, s.driving.controls);
+        s.physics.step();
+        s.vehicle.postPhysics();
+        if (s.vehicle.physics.forwardSpeed < 0.2) break;
+      }
+      const d = s.vehicle.physics.position.z - z0;
+      worst = Math.max(worst, d);
+      brakeRows.push(`${c.id} ${d.toFixed(0)}`);
+      // Held S after stopping: the car stays put a moment before reversing.
+      if (c.id === 'bmw_m3_e92') {
+        const zStop = s.vehicle.physics.position.z;
+        for (let i = 0; i < 0.5 * 120; i++) {
+          s.driving.update(DT);
+          s.vehicle.fixedUpdate(DT, s.driving.controls);
+          s.physics.step();
+          s.vehicle.postPhysics();
+        }
+        const rolled = zStop - s.vehicle.physics.position.z;
+        check('braking to a stop with S holds the car (no roll into reverse)', rolled < 0.1, `${rolled.toFixed(2)} m back in the 0.5 s after stopping`);
+      }
+    }
+    check('every car stops from 100 km/h within 30 m (keyboard)', worst < 30, brakeRows.join(', ') + ' m');
+    const driftRows: string[] = [];
+    let bad = 0;
+    for (const c of cars) {
+      const cfg = applySetup(c.physics, setupFor(c.physics, 'DRIFT'));
+      const d = keyboardDrift(await makeSim(false, 0, 0, 0, { override: cfg }));
+      const ok = d.band > 3 && d.spins === 0 && d.maxDeg < 60;
+      if (!ok) bad++;
+      driftRows.push(`${c.id} ${d.band.toFixed(1)} s/${d.maxDeg.toFixed(0)}°${ok ? '' : ' ✗'}`);
+    }
+    check('DRIFT: every car holds a keyboard drift (15-50° most of 6 s, no spin)', bad === 0, driftRows.join(', '));
   }
 
   finish();

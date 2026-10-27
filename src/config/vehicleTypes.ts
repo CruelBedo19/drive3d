@@ -243,6 +243,8 @@ export interface VehicleConfig {
   maxSpeedKmh: number;
   /** Top speed without the limiter (real cars), km/h: the Autobahn lifts maxSpeedKmh to it. */
   vmaxKmh?: number;
+  /** Rear grip the DRIFT setup gives this car (tuned per car so the slide holds at 30-45°; default 0.95). */
+  driftRearGrip?: number;
   maxReverseKmh: number;
   chassis: ChassisConfig;
   front: AxleConfig;

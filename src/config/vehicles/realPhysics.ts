@@ -24,10 +24,10 @@ const GEARBOX: Record<RealCarSpec['gearbox']['kind'], { efficiency: number; shif
   sequential: { efficiency: 0.95, shiftTime: 0.05 },
 };
 /**
- * Braking grip over the tyre's own (game feel: cars stop ~30 % shorter than the real ones would, so braking for
+ * Braking grip over the tyre's own (game feel: cars stop ~40 % shorter than the real ones would, so braking for
  * a junction or a car ahead feels sure-footed). Brake force rises with it.
  */
-const BRAKING_GRIP = 1.3;
+const BRAKING_GRIP = 1.6;
 /** Traction / braking grip as a share of the lateral grip per tyre kind (test car 1.12). */
 const TYRE_LONGITUDINAL: Record<RealCarSpec['tyre'], number> = { touring: 1.12, classic: 1.12, road: 1.15, sport: 1.22, cup: 1.25, slick: 1.3 };
 
@@ -86,6 +86,7 @@ export function realPhysics(base: VehicleConfig, spec: RealCarSpec): VehicleConf
     awdFrontSplit: spec.awdFrontSplit ?? base.awdFrontSplit,
     maxSpeedKmh: spec.limiterKmh,
     vmaxKmh: spec.vmaxKmh,
+    driftRearGrip: spec.driftRearGrip,
     chassis: {
       ...base.chassis,
       mass: m,

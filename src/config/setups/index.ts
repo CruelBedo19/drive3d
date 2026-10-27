@@ -125,7 +125,29 @@ export function setupFor(car: VehicleConfig, id: SetupId): VehicleSetup {
     if (typeof v !== 'number') continue;
     out[group][key] = own[group][key] * (v / ref[group][key]);
   }
+  if (id === 'DRIFT') driftPack(car, out);
   return out as VehicleSetup;
+}
+
+/**
+ * DRIFT on a real car: the slide needs the rear to spin up and stay spinning. Heavy cars, or ones with little power
+ * for their weight, would bog down mid-drift, and road tyres with a lot of traction hook up again: the setup brings
+ * every car to at least the power per kg the drift was tuned with on the test car, and the tyres' traction to the
+ * test car's (lateral grip, the car's own feel, stays).
+ */
+function driftPack(car: VehicleConfig, out: Record<string, Record<string, unknown>>): void {
+  const ref = placeholderStreet.physics;
+  const tunedKwPerKg = (SETUPS.DRIFT.engine?.maxPowerKw ?? ref.engine.maxPowerKw) / ref.chassis.mass;
+  const kw = out.engine.maxPowerKw as number;
+  const floor = car.chassis.mass * tunedKwPerKg;
+  if (kw < floor) {
+    out.engine.maxPowerKw = floor;
+    out.engine.peakTorqueNm = (out.engine.peakTorqueNm as number) * (floor / kw);
+  }
+  out.tires = { ...(out.tires ?? {}), longitudinalGrip: ref.tires.longitudinalGrip };
+  // Heavier and longer than the test car, real cars rotate further once loose: a little more rear grip keeps the
+  // slide at 30-45° instead of winding past 60° and bogging down.
+  if (car.vmaxKmh) out.rear = { ...(out.rear ?? {}), grip: car.driftRearGrip ?? 0.95 };
 }
 
 export function isSetupId(v: string | null): v is SetupId {
