@@ -50,8 +50,8 @@ export interface RealCarSpec {
   /** Centre of mass: low (mid-engine, race), normal, high (SUV). */
   cog: 'low' | 'normal' | 'high';
   /**
-   * DRIFT setup rear grip: the value that held a keyboard drift best on average (entries at 50 / 60 / 70 km/h,
-   * both directions) in a sweep of 0.90-1.10; see setups/index.ts driftPack.
+   * DRIFT setup rear grip: the value (swept 0.86-1.10, drift gearing on) that best held both a keyboard drift
+   * (entries at 50 / 70 km/h, both ways) and a throttle-modulated drift at 20 / 35 / 50°; see setups/index.ts.
    */
   driftRearGrip?: number;
 }
@@ -89,7 +89,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'sport',
     chassis: 'sport',
     cog: 'normal',
-    driftRearGrip: 0.90,
+    driftRearGrip: 1.02,
   },
   amg_c63s_w205: {
     massKg: 1800,
@@ -106,7 +106,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'sport',
     chassis: 'sport',
     cog: 'normal',
-    driftRearGrip: 0.90,
+    driftRearGrip: 1.02,
   },
   amg_one: {
     // 1.6 V6 turbo hybrid with four electric motors (two driving the front axle): 782 kW combined.
@@ -126,7 +126,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'cup',
     chassis: 'race',
     cog: 'low',
-    driftRearGrip: 1.12,
+    driftRearGrip: 0.94,
   },
   porsche_911_gt3_rsr: {
     // 4.2 flat-six (power as balanced for racing, ~515 PS); sequential 6-speed ratios est.
@@ -144,7 +144,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'slick',
     chassis: 'race',
     cog: 'low',
-    driftRearGrip: 1.10,
+    driftRearGrip: 0.82,
   },
   audi_rs6_c8: {
     massKg: 2150,
@@ -162,7 +162,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'sport',
     chassis: 'sport',
     cog: 'normal',
-    driftRearGrip: 0.98,
+    driftRearGrip: 1.06,
   },
   bmw_m3_e36: {
     massKg: 1535,
@@ -179,7 +179,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'road',
     chassis: 'sport',
     cog: 'normal',
-    driftRearGrip: 0.94,
+    driftRearGrip: 1.02,
   },
   bmw_m3_g81: {
     massKg: 1940,
@@ -197,7 +197,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'sport',
     chassis: 'sport',
     cog: 'normal',
-    driftRearGrip: 0.98,
+    driftRearGrip: 1.02,
   },
   ferrari_f40: {
     // Gear ratios est. (5-speed manual, 324 km/h at the red line in 5th).
@@ -215,7 +215,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'classic',
     chassis: 'race',
     cog: 'low',
-    driftRearGrip: 0.90,
+    driftRearGrip: 0.94,
   },
   honda_civic_ek9: {
     massKg: 1110,
@@ -233,7 +233,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'road',
     chassis: 'sport',
     cog: 'normal',
-    driftRearGrip: 0.90,
+    driftRearGrip: 1.06,
   },
   honda_nsx: {
     massKg: 1440,
@@ -250,7 +250,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'classic',
     chassis: 'sport',
     cog: 'low',
-    driftRearGrip: 1.06,
+    driftRearGrip: 0.94,
   },
   brabus_g900: {
     // Brabus 900 on the G 63: 4.5 V8 biturbo, 662 kW, 1250 Nm.
@@ -269,7 +269,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'touring',
     chassis: 'offroad',
     cog: 'high',
-    driftRearGrip: 1.10,
+    driftRearGrip: 0.94,
   },
   maybach_gls600: {
     massKg: 2785,
@@ -287,6 +287,6 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     tyre: 'touring',
     chassis: 'comfort',
     cog: 'high',
-    driftRearGrip: 0.94,
+    driftRearGrip: 0.98,
   },
 };

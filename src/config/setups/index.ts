@@ -155,7 +155,21 @@ function driftPack(car: VehicleConfig, out: Record<string, Record<string, unknow
   // Four-wheel drive in a drift: the front wheels pull the car straight and on into the steered direction, and
   // full throttle keeps adding speed instead of angle. DRIFT drives the rear wheels only (as BMW's 2WD or AMG's
   // drift modes do).
-  if (car.drivetrain === 'AWD') (out as Record<string, unknown>).drivetrain = 'RWD';
+  // A front-wheel-drive car cannot hold a drift on the throttle at all: in DRIFT it drives the rear wheels too (a
+  // game choice; STREET / SPORT keep it front-driven).
+  if (car.drivetrain === 'AWD' || car.drivetrain === 'FWD') (out as Record<string, unknown>).drivetrain = 'RWD';
+  // Drift gearing: the test car's ratios, the final drive set so every gear reaches the same road speed at this
+  // car's red line on its wheels as on the test car's. Long first gears hold a slide in second, short ones bounce
+  // the limiter in first (the drive cuts out and the tyres hook up), many-speed boxes shift away mid-drift.
+  const g = ref.gearbox;
+  const finalDrive = g.finalDrive * (car.wheel.radius / ref.wheel.radius) * (car.engine.redlineRpm / ref.engine.redlineRpm);
+  out.gearbox = {
+    ...(out.gearbox ?? {}),
+    ratios: [...g.ratios],
+    finalDrive,
+    shiftUpRpm: car.engine.redlineRpm * (g.shiftUpRpm / ref.engine.redlineRpm),
+    shiftDownRpm: car.engine.redlineRpm * (g.shiftDownRpm / ref.engine.redlineRpm),
+  };
 }
 
 export function isSetupId(v: string | null): v is SetupId {
