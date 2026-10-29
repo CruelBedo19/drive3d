@@ -434,6 +434,33 @@ export class Game implements AdminHost {
     return ready ?? Promise.resolve(true);
   }
 
+  /**
+   * Compiles the scene's shaders behind the loading screen (in parallel where the browser can), then draws a frame
+   * with a shadow over the whole scene for the shadow pass's depth shaders: otherwise the first seconds of driving
+   * stall on ~40 compiles, and later ones on what first comes into view.
+   */
+  async warmUp(): Promise<void> {
+    const r = this.ctx.renderer;
+    // Hidden things (empty traffic sets, far levels, night lamps...) are shown later: their shaders too.
+    const hidden: THREE.Object3D[] = [];
+    r.scene.traverse((o) => {
+      if (o.visible) return;
+      hidden.push(o);
+      o.visible = true;
+    });
+    try {
+      await r.renderer.compileAsync(r.scene, r.camera);
+      // The shadow pass's depth shaders (alpha-tested leaves, markings...) for everything loaded.
+      if (!this.disposed) {
+        r.setShadowFocus(this.vehicle.renderPosition);
+        r.renderWideShadow(2000);
+      }
+    } finally {
+      for (const o of hidden) o.visible = false;
+    }
+    if (!this.disposed) this.tick(0, false);
+  }
+
   get cameraModeName(): string {
     return this.cameraRig.mode.name;
   }
@@ -520,7 +547,7 @@ export class Game implements AdminHost {
     this.hud.update(dt, this.hudFrame());
     if (this.debug) {
       const t = this.ctx.frameTimer;
-      this.debug.perf = `frame cost CPU ${t.cpuMs.toFixed(2)} ms · GPU ${t.hasGpuTiming ? `${t.gpuMs.toFixed(2)} ms` : 'n/a'} → max ~${Math.round(t.capacityFps)} FPS`;
+      this.debug.perf = `frame cost CPU ${t.cpuMs.toFixed(2)} ms · GPU ${t.hasGpuTiming ? `${t.gpuMs.toFixed(2)} ms` : 'n/a'} → max ~${Math.round(t.capacityFps)} FPS · resolution ${Math.round(this.ctx.renderer.autoResolutionScale * 100)} %`;
     }
     this.debug?.update(dt, this.vehicle, this.fps.fps, this.fps.frameMs, this.sim.stepsThisFrame, this.physicsDebug?.enabled ?? false);
     this.physicsDebug?.update();

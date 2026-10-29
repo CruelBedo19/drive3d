@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GAME_CONFIG } from '../config/gameConfig';
 import type { GraphicsSettings, RenderDistance, ShadowQuality } from '../settings/Settings';
+import { ResolutionGovernor } from './ResolutionGovernor';
 
 const SHADOW_MAP: Record<Exclude<ShadowQuality, 'off'>, { size: number; range: number }> = {
   low: { size: 512, range: 28 },
@@ -26,6 +27,8 @@ export class Renderer {
   private readonly sunOffset = new THREE.Vector3(-40, 70, -30);
   private readonly resizeObserver: ResizeObserver;
   private resolutionScale = 1;
+  private autoResolution = true;
+  private readonly governor = new ResolutionGovernor();
   /** Fog set by the world, scaled by the view-distance setting and the weather. */
   private fogBase = { near: 150, far: 650 };
   private fogDistanceScale = 1;
@@ -87,6 +90,8 @@ export class Renderer {
   /** Applies the graphics settings that can change at runtime (not antialias). */
   applyGraphics(g: GraphicsSettings): void {
     this.resolutionScale = g.resolutionScale;
+    this.autoResolution = g.autoResolution;
+    if (!g.autoResolution) this.governor.reset();
     this.resize();
     if (g.shadows === 'off') {
       this.sun.castShadow = false;
@@ -135,6 +140,39 @@ export class Renderer {
     this.renderer.render(scene, camera);
   }
 
+  /**
+   * Dynamic resolution (setting): one driving frame's length (s), smoothed CPU / GPU frame time (ms, GPU 0 when not
+   * measured) and the FPS limit (0: none).
+   */
+  adaptResolution(dt: number, cpuMs: number, gpuMs: number, fpsLimit: number): void {
+    if (!this.autoResolution) return;
+    const before = this.governor.scale;
+    if (this.governor.update(dt, cpuMs, gpuMs, fpsLimit > 0 ? Math.max(1000 / 60, 1000 / fpsLimit) : 1000 / 60) !== before) this.resize();
+  }
+
+  /** Share of the set resolution drawn right now (dynamic resolution). */
+  get autoResolutionScale(): number {
+    return this.autoResolution ? this.governor.scale : 1;
+  }
+
+  /**
+   * One frame with the sun's shadow covering `radius` m round its focus (loading-screen warm-up: the depth shader of
+   * every caster in the scene, not only those near the car, gets compiled).
+   */
+  renderWideShadow(radius: number): void {
+    const sc = this.sun.shadow.camera;
+    const saved = [sc.left, sc.right, sc.top, sc.bottom, sc.far] as const;
+    sc.left = -radius;
+    sc.right = radius;
+    sc.top = radius;
+    sc.bottom = -radius;
+    sc.far = radius * 2;
+    sc.updateProjectionMatrix();
+    this.render();
+    [sc.left, sc.right, sc.top, sc.bottom, sc.far] = saved;
+    sc.updateProjectionMatrix();
+  }
+
   /** Size of the drawing area in CSS pixels. */
   get size(): { width: number; height: number } {
     return { width: Math.max(1, this.container.clientWidth), height: Math.max(1, this.container.clientHeight) };
@@ -143,7 +181,7 @@ export class Renderer {
   resize(): void {
     const w = Math.max(1, this.container.clientWidth);
     const h = Math.max(1, this.container.clientHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, GAME_CONFIG.render.maxPixelRatio) * this.resolutionScale);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, GAME_CONFIG.render.maxPixelRatio) * this.resolutionScale * this.autoResolutionScale);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();

@@ -235,15 +235,21 @@ export class CityV2ParkedCars {
         k += n;
       });
     }
-    this.nearMeshes.forEach((meshes, mi) => {
-      for (const mesh of meshes ?? []) {
-        mesh.count = fill[mi];
-        mesh.instanceMatrix.needsUpdate = true;
+    // Only the instances in use are uploaded; empty meshes are hidden (three would still draw zero instances).
+    const commit = (mesh: THREE.InstancedMesh, n: number) => {
+      mesh.count = n;
+      mesh.visible = n > 0;
+      if (!n) return;
+      for (const attr of mesh.instanceColor ? [mesh.instanceMatrix, mesh.instanceColor] : [mesh.instanceMatrix]) {
+        attr.clearUpdateRanges();
+        attr.addUpdateRange(0, n * attr.itemSize);
+        attr.needsUpdate = true;
       }
+    };
+    this.nearMeshes.forEach((meshes, mi) => {
+      for (const mesh of meshes ?? []) commit(mesh, fill[mi]);
     });
-    far.count = nf;
-    far.instanceMatrix.needsUpdate = true;
-    far.instanceColor!.needsUpdate = true;
+    commit(far, nf);
     this.drawnNear = nn;
     this.drawnFar = nf;
     this.dirty = false;

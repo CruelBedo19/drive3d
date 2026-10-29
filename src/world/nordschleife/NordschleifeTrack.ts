@@ -24,6 +24,12 @@ const SKIRT_WIDTH = 12;
 const SKIRT_DROP = 20;
 /** Barrier colliders are thicker than the rail, extending outwards, so fast impacts don't tunnel. */
 const BARRIER_COLLIDER_THICKNESS = 0.8;
+/**
+ * Guard-rail colliders exist only on the lap chunks this close to the car (from the chunk's bounds), m, and go
+ * beyond it plus the hysteresis: Rapier's step costs ~0.14 µs per collider, 10 000 rail boxes made it 1.7 ms.
+ */
+const BARRIER_ACTIVE = 250;
+const BARRIER_HYSTERESIS = 100;
 const KERB_MIN_RUN = 5;
 const KERB_EXTEND = 3;
 
@@ -31,7 +37,7 @@ const KERB_EXTEND = 3;
  * The Nürburgring Nordschleife (20.7 km), built from an OpenStreetMap centre line
  * with real elevation. Cross-section, kerbs, rails, trees and colliders are generated
  * here (see NORDSCHLEIFE in config/tracks.ts). Visuals are chunked for culling;
- * physics is one fixed body: a ground trimesh plus box guard rails.
+ * physics is one fixed body: a ground trimesh plus box guard rails on the chunks near the car.
  */
 export class NordschleifeTrack implements Track {
   readonly group = new THREE.Group();
@@ -49,6 +55,8 @@ export class NordschleifeTrack implements Track {
   private readonly half = C.width / 2;
   /** Tree chunks with their bounding-sphere centre, for vegetation-distance culling. */
   private readonly treeChunks: { meshes: THREE.InstancedMesh[]; centre: THREE.Vector3; radius: number }[] = [];
+  /** Guard-rail colliders per lap chunk: built near the car only (stream). */
+  private readonly barrierChunks: { centre: THREE.Vector3; radius: number; descs: RAPIER.ColliderDesc[]; live: RAPIER.Collider[] }[] = [];
   /** Materials that look wet in the rain, with their dry values. */
   private readonly wettable: WettableMaterial[] = [];
   private readonly rail = C.width / 2 + C.shoulder;
@@ -86,6 +94,20 @@ export class NordschleifeTrack implements Track {
     let minY = Infinity;
     for (const p of this.curve.data.points) minY = Math.min(minY, p[1]);
     this.killHeight = minY - 40;
+    this.stream(this.spawn.position);
+  }
+
+  /** Guard-rail colliders on the lap chunks near the car (cheap: ~50 distance checks). */
+  stream(position: THREE.Vector3): void {
+    for (const c of this.barrierChunks) {
+      const d = Math.hypot(c.centre.x - position.x, c.centre.z - position.z) - c.radius;
+      if (d < BARRIER_ACTIVE && !c.live.length) {
+        for (const desc of c.descs) c.live.push(this.world.createCollider(desc, this.body));
+      } else if (d > BARRIER_ACTIVE + BARRIER_HYSTERESIS && c.live.length) {
+        for (const col of c.live) this.world.removeCollider(col, false);
+        c.live.length = 0;
+      }
+    }
   }
 
   /** Hides tree chunks beyond the vegetation distance (whole chunks: cheap, ~100 checks a frame). */
@@ -145,7 +167,7 @@ export class NordschleifeTrack implements Track {
     this.world.createCollider(RAPIER.ColliderDesc.trimesh(vertices, indices, flags).setFriction(0.9), this.body);
   }
 
-  /** Guard rails on both sides: one cuboid collider per segment, rendered as instanced boxes. */
+  /** Guard rails on both sides: one cuboid collider per segment (made per chunk by stream), rendered as instanced boxes. */
   private buildBarriers(f: TrackFrames): void {
     const { height, thickness } = C.barrier;
     const n = f.count;
@@ -168,6 +190,7 @@ export class NordschleifeTrack implements Track {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       let k = 0;
+      const chunk = { centre: new THREE.Vector3(), radius: 0, descs: [] as RAPIER.ColliderDesc[], live: [] as RAPIER.Collider[] };
       for (let i = c0; i < c1; i++) {
         const j = (i + 1) % n;
         for (const side of [1, -1] as const) {
@@ -186,13 +209,12 @@ export class NordschleifeTrack implements Track {
 
           // Collider: inner face on the rail, thickness outwards.
           const hc = BARRIER_COLLIDER_THICKNESS / 2;
-          this.world.createCollider(
+          chunk.descs.push(
             RAPIER.ColliderDesc.cuboid(hc, height / 2, len / 2)
               .setTranslation(centre.x + x.x * side * (hc - thickness / 2), centre.y, centre.z + x.z * side * (hc - thickness / 2))
               .setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
               .setFriction(0.25)
               .setRestitution(0.15),
-            this.body,
           );
           scale.set(thickness, height, len);
           m.compose(centre, q, scale);
@@ -202,6 +224,9 @@ export class NordschleifeTrack implements Track {
       mesh.instanceMatrix.needsUpdate = true;
       mesh.computeBoundingSphere();
       this.group.add(mesh);
+      chunk.centre.copy(mesh.boundingSphere!.center);
+      chunk.radius = mesh.boundingSphere!.radius;
+      this.barrierChunks.push(chunk);
     }
   }
 

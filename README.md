@@ -101,10 +101,21 @@ Always on in `npm run dev`; in a production build only with `?admin` (a hidden s
   Paths become `Path2D` once; each frame only sets a transform and strokes them (no 3D render, no DOM per feature).
   Modes: fixed (north up, arrow turns) or rotating (heading up, player drawn lower to show more road ahead).
 - Settings (main menu or pause): Arayüz, Ses (volumes for the coming audio, `AudioManager` mixer), Grafik (shadow quality,
-  resolution scale, view distance, vegetation distance, FPS cap; anti-aliasing applies after a reload), Kontroller
+  resolution scale, automatic resolution, view distance, vegetation distance, FPS cap; anti-aliasing applies after a
+  reload), Kontroller
   (rebind by pressing a key, duplicate warning, reset). The schema in `src/settings/Settings.ts` drives defaults,
   validation and the screen.
 - Sizes scale with the HUD scale setting, capped at 30% of the viewport height, with safe-area padding.
+- Performance:
+  - Physics steps the Rapier pipeline directly (`PhysicsWorld.step`): `World.step()` of rapier3d-compat 0.21 walks
+    every collider and body through JS callbacks after each step (soft-body bookkeeping the game does not use).
+  - Shaders are compiled behind the loading screen (`Game.warmUp`: `compileAsync` with hidden objects shown, then one
+    frame with the sun's shadow over the whole scene for the depth shaders); nothing compiles while driving.
+  - The player car casts its body shadow from one merged position-only mesh drawn in the shadow map only; empty
+    instanced sets (traffic, parked cars, props, buildings) are hidden and upload only the instances in use.
+  - Automatic resolution (`ResolutionGovernor`): when frames drop under ~50 FPS because of drawing (not CPU work)
+    the view renders at fewer pixels in steps down to 55 %, and steps back up with time to spare (F3 shows the share).
+  - Nordschleife guard-rail colliders exist only on the lap chunks within 250 m of the car.
 
 ## Tracks
 

@@ -44,6 +44,8 @@ export interface GraphicsSettings {
   shadows: ShadowQuality;
   /** Fraction of the device pixel ratio the 3D view renders at. */
   resolutionScale: number;
+  /** Draw at fewer pixels for a while when the frame rate drops (dynamic resolution). */
+  autoResolution: boolean;
   renderDistance: RenderDistance;
   vegetationDistance: VegetationDistance;
   /** Frames per second cap as a string ('0' = unlimited). */
@@ -191,6 +193,7 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     ],
   },
   { section: 'graphics', key: 'resolutionScale', label: 'Çözünürlük ölçeği', type: 'range', default: 1, min: 0.5, max: 1, step: 0.05, format: percent },
+  { section: 'graphics', key: 'autoResolution', label: 'Otomatik çözünürlük', hint: 'FPS düşünce çözünürlüğü geçici olarak azaltır', type: 'toggle', default: true },
   {
     section: 'graphics',
     key: 'renderDistance',

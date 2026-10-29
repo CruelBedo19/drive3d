@@ -123,13 +123,19 @@ async function main(): Promise<void> {
       v.root.traverse((o) => (o as THREE.Mesh).isMesh && out.push(o as THREE.Mesh));
       return out;
     };
-    const geoA = new Set(meshes(a).map((m) => m.geometry));
+    // The model's own geometry (the merged shadow caster is each visual's).
+    const geoA = new Set(meshes(a).filter((m) => m.name !== 'shadow-proxy').map((m) => m.geometry));
+    const proxy = meshes(a).find((m) => m.name === 'shadow-proxy');
+    const bodyCasters = meshes(a).filter((m) => m.castShadow && m !== proxy && !a.wheelRigs.some((w) => w.pivot.getObjectById(m.id)));
+    let proxyDisposed = false;
+    proxy?.geometry.addEventListener('dispose', () => (proxyDisposed = true));
+    check('the body casts its shadow from one merged mesh (wheels their own)', !!proxy && proxy.castShadow && bodyCasters.length === 0, `${proxy ? (proxy.geometry.index!.count / 3).toFixed(0) : 0} triangles in the shadow mesh, ${bodyCasters.length} body parts casting`);
     check('two users of one model: one download / parse, shared geometry', loads === 1 && a.status === 'loaded' && b.status === 'loaded' && meshes(b).some((m) => geoA.has(m.geometry)), `loads ${loads}`);
     let disposed = 0;
     for (const g of geoA) g.addEventListener('dispose', () => disposed++);
     a.dispose();
     b.dispose();
-    check('released model stays cached while idle (no dispose)', disposed === 0 && cache.has(url), `disposed ${disposed}`);
+    check('released model stays cached while idle (no dispose), the visual\'s shadow mesh freed', disposed === 0 && cache.has(url) && proxyDisposed, `disposed ${disposed}, shadow mesh freed ${proxyDisposed}`);
     const c = new GltfCarVisual(physicsCfg, testGltfCar.visual, cache);
     await c.ready;
     check('coming back to a cached model: no new download / parse', loads === 1 && c.status === 'loaded', `loads ${loads}`);

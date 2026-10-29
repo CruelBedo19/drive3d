@@ -15,6 +15,7 @@ import { DrivingSim } from '../src/core/DrivingSim';
 import { GameFlow } from '../src/core/GameFlow';
 import { acceptsDrivingInput, hasSession, showsDrivingHud, showsShowroom } from '../src/core/GameState';
 import { PhysicsWorld } from '../src/core/PhysicsWorld';
+import { ResolutionGovernor } from '../src/core/ResolutionGovernor';
 import { ProfileStore, type ProfileRules } from '../src/settings/Profile';
 import { SETTINGS_KEY, SettingsStore, defaultSettings, findKeyConflicts, isBindableKey, keyLabel } from '../src/settings/Settings';
 import { GltfCarVisual } from '../src/vehicle/visual/GltfCarVisual';
@@ -139,6 +140,39 @@ async function main(): Promise<void> {
     check('reset one section', a.value.controls.camera === 'KeyV' && a.value.graphics.shadows === 'low', 'controls back to defaults, graphics kept');
     const g = channelGains({ master: 0.5, engine: 0.8, tyres: 1, ambience: 1, music: 1, musicEnabled: false, muteAll: false });
     check('audio channel gains (master × channel, music switch)', Math.abs(g.engine - 0.4) < 1e-9 && g.music === 0 && channelGains({ ...defaultSettings().audio, muteAll: true }).engine === 0, JSON.stringify(g));
+  }
+
+  section('Dynamic resolution');
+  {
+    // Frames of `ms` for `secs` seconds (dt = frame length), with the given CPU / GPU time; returns the scale.
+    const run = (g: ResolutionGovernor, secs: number, ms: number, cpu: number, gpu: number, budget = 1000 / 60) => {
+      for (let t = 0; t < secs; t += ms / 1000) g.update(ms / 1000, cpu, gpu, budget);
+      return g.scale;
+    };
+    const gpuBound = new ResolutionGovernor();
+    const down = run(gpuBound, 6, 30, 6, 28);
+    const floor = run(gpuBound, 60, 30, 6, 28);
+    const cpuBound = new ResolutionGovernor();
+    const cpuScale = run(cpuBound, 10, 30, 28, 10);
+    const capped = new ResolutionGovernor();
+    const at30 = run(capped, 10, 33.3, 6, 12, 1000 / 30);
+    const up = run(gpuBound, 120, 16.7, 5, 6);
+    // No GPU timer: 60 Hz with spare time steps up; slow again right after: the next try waits longer.
+    const blind = new ResolutionGovernor();
+    run(blind, 3, 30, 5, 0);
+    run(blind, 0.6, 16.7, 5, 0);
+    const blindDown = blind.scale;
+    run(blind, 5, 16.7, 5, 0);
+    const blindUp = blind.scale;
+    run(blind, 2.5, 30, 5, 0);
+    const again = blind.scale;
+    run(blind, 6, 16.7, 5, 0);
+    const waited = blind.scale;
+    check(
+      'drawing-bound slow frames lower the resolution in steps (≥ 55 %), CPU-bound ones and an FPS cap do not; spare time raises it back, without see-sawing',
+      down < 1 && down > 0.55 && floor === 0.55 && cpuScale === 1 && at30 === 1 && up === 1 && blindDown < 1 && blindUp > blindDown && again < blindUp && waited === again,
+      `GPU-bound 6 s ${down}, 60 s ${floor}; CPU-bound ${cpuScale}; 30 FPS cap ${at30}; spare GPU ${up}; no timer: ${blindDown} → ${blindUp} → slow again ${again}, ${waited} 6 s later`,
+    );
   }
 
   section('Camera keys (V cycle, C hold to look back)');

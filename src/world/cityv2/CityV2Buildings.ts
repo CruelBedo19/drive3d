@@ -339,6 +339,9 @@ export class CityV2Buildings {
   private lastSweep = 0;
   /** Geometry jobs: each runs until done (true) or past the deadline (false: resumed next frame). */
   private readonly queue = new Map<string, (deadline: number) => boolean>();
+  /** Buildings drawn per instanced mesh (key) and far boxes in view, refilled every frame (kept: no garbage). */
+  private readonly groups = new Map<string, Building[]>();
+  private readonly farList: Building[] = [];
   private readonly far: THREE.InstancedMesh | null = null;
   private readonly farBox: THREE.BufferGeometry | null = null;
   private readonly farData: THREE.InstancedBufferAttribute | null = null;
@@ -581,7 +584,7 @@ export class CityV2Buildings {
         const db = Math.max(0, Math.hypot(b.cx - camera.x, b.cz - camera.z) - b.r);
         const h = (level: number) => LIMITS[level] + (b.lod >= 0 && b.lod <= level ? HYSTERESIS : 0);
         b.lod = db < h(0) ? 0 : db < h(1) ? 1 : 2;
-        if (!this.geometries.has(`${b.proto.id}:${b.lod}`)) {
+        if (!this.geometries.has(b.keys[b.lod])) {
           const { proto, lod } = b;
           this.request(`${proto.id}:${lod}`, () => {
             this.geometry(proto, lod);
@@ -594,8 +597,10 @@ export class CityV2Buildings {
 
   /** Instance buffers, merged cells and far boxes as drawn now (in view, with a frustum). */
   private refill(frustum: THREE.Frustum | null): void {
-    const groups = new Map<string, Building[]>();
-    const far: Building[] = [];
+    const groups = this.groups;
+    for (const list of groups.values()) list.length = 0;
+    const far = this.farList;
+    far.length = 0;
     let farChanged = false;
     this.counts = [0, 0, 0, 0, 0];
     this.waiting = 0;
@@ -653,10 +658,11 @@ export class CityV2Buildings {
         const list = groups.get(b.keys[lod]);
         if (list) list.push(b);
         else groups.set(b.keys[lod], [b]);
+        // A mesh with buildings to draw: one draw call.
+        if (!list || list.length === 1) this.draws.instanced++;
         this.triangles += b.proto.tris[lod];
       }
     }
-    this.draws.instanced = groups.size;
     this.farShown = far.length;
     this.draws.far = far.length ? 1 : 0;
     this.triangles += far.length * 12;
@@ -664,11 +670,12 @@ export class CityV2Buildings {
     if (!changed) return;
     // Empty meshes are hidden: three would still issue a draw call for zero instances.
     for (const [key, mesh] of this.meshes) {
-      if (groups.has(key)) continue;
+      if (groups.get(key)?.length) continue;
       mesh.count = 0;
       mesh.visible = false;
     }
     for (const [key, list] of groups) {
+      if (!list.length) continue;
       const mesh = this.meshes.get(key)!;
       const variant = mesh.geometry.getAttribute('variant') as THREE.InstancedBufferAttribute;
       list.forEach((b, i) => {

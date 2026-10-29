@@ -304,6 +304,9 @@ export class App {
       this.loading.stage('Araç modeli yükleniyor…');
       await game.modelReady;
       if (token !== this.loadToken) return game.dispose();
+      this.loading.stage('Grafikler hazırlanıyor…');
+      await game.warmUp();
+      if (token !== this.loadToken) return game.dispose();
       this.game = game;
       this.flow.go('DRIVING');
     } catch (err) {
@@ -378,6 +381,7 @@ export class App {
       this.renderer.render(this.showroom.scene, this.showroom.camera);
     }
     this.frameTimer.end(dt);
+    if (this.game && state === 'DRIVING') this.renderer.adaptResolution(dt, this.frameTimer.cpuMs, this.frameTimer.hasGpuTiming ? this.frameTimer.gpuMs : 0, this.fpsLimit);
     this.input.endFrame();
   };
 

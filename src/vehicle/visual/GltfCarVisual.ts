@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { NodeName, VehicleConfig, VehicleModelConfig, VehicleVisualConfig } from '../../config/vehicleTypes';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { DEG2RAD } from '../../utils/math';
 import { PlaceholderCarVisual } from './PlaceholderCarVisual';
 import type { VehicleVisual, VehicleVisualState } from './VehicleVisual';
@@ -41,6 +42,8 @@ export class GltfCarVisual implements VehicleVisual {
   private readonly brakeLights = new LampGroup(0.3, true);
   private readonly reverseLights = new LampGroup(0);
   private disposed = false;
+  /** The body's merged shadow caster (this visual's own geometry). */
+  private shadowProxy: THREE.Mesh | null = null;
   private readonly assets: VehicleAssetCache;
   /** Holding a clone from `assets` (released on dispose). */
   private acquired = false;
@@ -136,6 +139,7 @@ export class GltfCarVisual implements VehicleVisual {
     this.collectLamps(scene, nodes.brakeLights, this.brakeLights, 0xff2020, 'brakeLights');
     this.collectLamps(scene, nodes.reverseLights, this.reverseLights, 0xffffff, 'reverseLights');
     if (nodes.body) this.find(scene, nodes.body, 'body');
+    this.buildShadowProxy(container);
 
     if (this.fallback) {
       this.fallback.dispose();
@@ -180,7 +184,56 @@ export class GltfCarVisual implements VehicleVisual {
     this.headlights.dispose();
     this.brakeLights.dispose();
     this.reverseLights.dispose();
+    if (this.shadowProxy) {
+      this.shadowProxy.geometry.dispose();
+      (this.shadowProxy.material as THREE.Material).dispose();
+      this.shadowProxy = null;
+    }
     this.root.removeFromParent();
+  }
+
+  /**
+   * The body casts its shadow from one merged, position-only mesh drawn in the shadow map only, instead of every
+   * part (models have 13-104, each a draw call in the shadow map). The wheels (attached to their rigs by now, out of
+   * `container`) keep their own: they turn. Called with the root at the origin.
+   */
+  private buildShadowProxy(container: THREE.Object3D): void {
+    const parts: THREE.BufferGeometry[] = [];
+    container.updateMatrixWorld(true);
+    container.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.visible) return;
+      const src = mesh.geometry;
+      const pos = src.getAttribute('position');
+      // Positions read through the accessor: quantised / interleaved attributes come out as plain floats.
+      const xyz = new Float32Array(pos.count * 3);
+      for (let i = 0; i < pos.count; i++) {
+        xyz[i * 3] = pos.getX(i);
+        xyz[i * 3 + 1] = pos.getY(i);
+        xyz[i * 3 + 2] = pos.getZ(i);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(xyz, 3));
+      const index = src.index ? Uint32Array.from(src.index.array as ArrayLike<number>) : Uint32Array.from({ length: pos.count }, (_, i) => i);
+      g.setIndex(new THREE.BufferAttribute(index, 1));
+      g.applyMatrix4(mesh.matrixWorld);
+      parts.push(g);
+      mesh.castShadow = false;
+    });
+    const merged = parts.length ? mergeGeometries(parts, false) : null;
+    for (const g of parts) g.dispose();
+    if (!merged) return;
+    merged.computeBoundingSphere();
+    // Both sides: the parts' own materials differ in which faces they cast from.
+    const proxy = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+    proxy.name = 'shadow-proxy';
+    proxy.castShadow = true;
+    // Nothing to draw in the view (an empty draw range), all of it in the shadow map.
+    merged.setDrawRange(0, 0);
+    proxy.onBeforeShadow = () => merged.setDrawRange(0, Infinity);
+    proxy.onAfterShadow = () => merged.setDrawRange(0, 0);
+    this.root.add(proxy);
+    this.shadowProxy = proxy;
   }
 
   private useFallback(err: unknown): void {

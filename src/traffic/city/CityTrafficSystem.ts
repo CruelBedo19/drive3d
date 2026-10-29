@@ -308,10 +308,11 @@ export class CityTrafficSystem {
       // Someone just turned off this lane another way (or this vehicle did, onto a connector beside its): still in
       // front until it has pulled away by both lengths, the two paths being side by side at first (a bus's swept
       // path reaches the next one).
-      const turnedOff = seg.kind === 'lane' ? seg.next.filter((c) => c !== v.route[0]) : g[seg.from].next.filter((c) => c !== seg.id);
+      const turnedOff = seg.kind === 'lane' ? seg.next : g[seg.from].next;
+      const own = seg.kind === 'lane' ? v.route[0] : seg.id;
       for (const c of turnedOff) {
         const o = this.occ[c][0];
-        if (!o) continue;
+        if (!o || c === own) continue;
         const gap = (seg.kind === 'lane' ? dist + o.s : o.s - v.s) - (o.klass.length + v.klass.length) / 2;
         if (o.s < o.klass.length + v.klass.length + 2 && (seg.kind === 'lane' || o.s > v.s) && gap < best) {
           best = gap;
@@ -453,7 +454,7 @@ export class CityTrafficSystem {
       if (this.occ[k].length || this.claims[k] || this.tails[k]) return 'kavşak dolu';
     }
     for (const k of conn.beside) {
-      if (this.occ[k].some((o) => o.klass.length > LONG || v.klass.length > LONG)) return 'kavşak dolu';
+      for (const o of this.occ[k]) if (o.klass.length > LONG || v.klass.length > LONG) return 'kavşak dolu';
     }
     // Room on the exit lane.
     const exit = g[conn.to];

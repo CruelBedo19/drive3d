@@ -286,8 +286,7 @@ export class TrafficVisuals {
     }
     this.commit(this.farSets.car);
     this.commit(this.farSets.van);
-    this.wheels.count = w;
-    this.wheels.instanceMatrix.needsUpdate = true;
+    commitInstances(this.wheels, w);
     this.glowGeo.setDrawRange(0, g);
     gp.needsUpdate = true;
     gc.needsUpdate = true;
@@ -309,12 +308,9 @@ export class TrafficVisuals {
     });
   }
 
+  /** Count, upload (only the instances in use) and visibility (an empty set costs no draw call, nor a shadow one). */
   private commit(set: DrawSet): void {
-    for (const mesh of [...set.bodies, ...set.lamps]) {
-      mesh.count = set.count;
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }
+    for (const mesh of [...set.bodies, ...set.lamps]) commitInstances(mesh, set.count);
   }
 
   /** Vehicles drawn as the model / as a stand-in in the last update (F2, tests). */
@@ -360,4 +356,16 @@ function glowTexture(): THREE.Texture | null {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 64, 64);
   return new THREE.CanvasTexture(canvas);
+}
+
+/** Draws the first `count` instances: uploads only those, and hides the mesh when there are none. */
+function commitInstances(mesh: THREE.InstancedMesh, count: number): void {
+  mesh.count = count;
+  mesh.visible = count > 0;
+  if (!count) return;
+  for (const attr of mesh.instanceColor ? [mesh.instanceMatrix, mesh.instanceColor] : [mesh.instanceMatrix]) {
+    attr.clearUpdateRanges();
+    attr.addUpdateRange(0, count * attr.itemSize);
+    attr.needsUpdate = true;
+  }
 }
