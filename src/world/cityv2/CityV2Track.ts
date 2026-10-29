@@ -23,7 +23,7 @@ const GROUND_ANISOTROPY = 8;
  * (blue − red of a sunny lot: +13 at the full share, +3 at 0.25). Light-grey
  * concrete otherwise takes on the sky's blue and read as ice or water.
  */
-const ENV_LIGHT: Record<string, number> = { cv2_sidewalk: 0.25, cv2_lot: 0.25, cv2_plaza: 0.4, cv2_asphalt: 0.7, cv2_parking: 0.7, cv2_park: 0.35, cv2_land: 0.35, cv2_median: 0.35 };
+const ENV_LIGHT: Record<string, number> = { cv2_sidewalk: 0.25, cv2_lot: 0.25, cv2_garden: 0.35, cv2_plaza: 0.4, cv2_asphalt: 0.7, cv2_parking: 0.7, cv2_park: 0.35, cv2_land: 0.35, cv2_median: 0.35 };
 
 interface CellState {
   def: CityV2Cell;
@@ -131,7 +131,7 @@ export class CityV2Track implements Track {
         m.polygonOffset = true;
         m.polygonOffsetFactor = -2;
         m.polygonOffsetUnits = -4;
-      } else if (m.isMeshStandardMaterial && /asphalt|parking|sidewalk|lot|plaza|park|land|median/.test(m.name)) {
+      } else if (m.isMeshStandardMaterial && /asphalt|parking|sidewalk|lot|garden|plaza|park|land|median/.test(m.name)) {
         const env = ENV_LIGHT[m.name] ?? 1;
         this.wettable.push({ material: m, roughness: m.roughness, color: m.color.clone(), env });
       }

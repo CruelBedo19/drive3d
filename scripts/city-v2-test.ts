@@ -32,6 +32,7 @@ import { VehiclePhysics } from '../src/vehicle/physics/VehiclePhysics';
 import { setCityV2Assets } from '../src/world/cityv2/CityV2Assets';
 import { parseCityV2Data, type CityV2Json } from '../src/world/cityv2/CityV2Data';
 import type { CityV2Track } from '../src/world/cityv2/CityV2Track';
+import { parcelCore } from './lib/cityV2/buildings';
 import { DISTRICTS } from './lib/cityV2/districts';
 import { RAMP_IN, RASTER, buildGround, buildMarkings, type GroundRaster } from './lib/cityV2/ground';
 import { packProps, placeProps } from './lib/cityV2/props';
@@ -354,7 +355,8 @@ async function drive(dir: string, label: string): Promise<void> {
       return inside;
     };
     // Off the road: walls plus the 0.6 m cornice overhang inside a building block's lot (behind the sidewalk),
-    // clear of every asphalt edge (and of the alleys' kerb ramp), not on special parcels or the plaza.
+    // clear of every asphalt edge (and of the alleys' kerb ramp); on a large parcel only in its built middle
+    // (parcelCore: mall, hospital, factory...), never on a park, car park or the plaza.
     const bad: string[] = [];
     for (const q of inst) {
       const [x0, z0, x1, z1] = [q.rect[0] - 0.6, q.rect[1] - 0.6, q.rect[2] + 0.6, q.rect[3] + 0.6];
@@ -371,15 +373,24 @@ async function drive(dir: string, label: string): Promise<void> {
         const need = kerbOffset(r.cls) + (r.cls === 'alley' ? RAMP_IN : 0);
         if (Math.hypot(dx, dz) < need - 1e-3) road = `${r.cls} ${Math.hypot(dx, dz).toFixed(2)} < ${need}`;
       }
-      if (!inside || road || block?.kind !== 'buildings' || block.landmark) bad.push(`${q.proto.name}@(${q.x.toFixed(0)},${q.z.toFixed(0)}) ${!inside ? 'outside its lot' : ''} ${road} ${block && block.kind !== 'buildings' ? block.use ?? block.kind : ''}${block?.landmark ? 'landmark' : ''}`);
+      const core = block ? parcelCore(block) : null;
+      const onCore = !!core && q.rect[0] >= core[0] - 1e-3 && q.rect[1] >= core[1] - 1e-3 && q.rect[2] <= core[2] + 1e-3 && q.rect[3] <= core[3] + 1e-3;
+      const special = block && (block.kind !== 'buildings' || block.landmark) && !onCore;
+      if (!inside || road || !block || special) bad.push(`${q.proto.name}@(${q.x.toFixed(0)},${q.z.toFixed(0)}) ${!inside ? 'outside its lot' : ''} ${road} ${special ? `${block.use ?? block.kind}${block.landmark ? ' landmark' : ''} outside its built middle` : ''}`);
       if (block) q.block = block.id;
     }
     check('buildings stay on their lots: off roads, sidewalks, medians, junctions, special parcels, the plaza and the landmark block', bad.length === 0, bad.length ? bad.slice(0, 5).join('; ') : `${inst.length} checked against ${j.roadGraph.length} roads`);
     const ordinary = l.blocks.filter((k) => k.kind === 'buildings' && !k.landmark);
     const built = new Set(inst.map((q) => q.block));
     const empty = ordinary.filter((k) => !built.has(k.id));
-    const special = l.blocks.filter((k) => k.kind !== 'buildings' || k.landmark).map((k) => k.use ?? (k.landmark ? 'landmark' : k.kind));
-    check('every ordinary block built on (a few small ones may stay empty); special parcels empty', empty.length <= ordinary.length * 0.03, `${ordinary.length - empty.length}/${ordinary.length} ordinary blocks built; empty: ${[...new Set(special)].map((u) => `${u} ${special.filter((x) => x === u).length}`).join(', ')}`);
+    const complexes = l.blocks.filter((k) => parcelCore(k));
+    const bare = complexes.filter((k) => !built.has(k.id));
+    const special = l.blocks.filter((k) => (k.kind !== 'buildings' || k.landmark) && !parcelCore(k)).map((k) => k.use ?? k.kind);
+    check(
+      'every ordinary block built on (a few small ones may stay empty), every mall, hospital, factory... too; parks, car parks and the plaza empty',
+      empty.length <= ordinary.length * 0.03 && bare.length === 0,
+      `${ordinary.length - empty.length}/${ordinary.length} ordinary blocks, ${complexes.length - bare.length}/${complexes.length} large parcels built; empty: ${[...new Set(special)].map((u) => `${u} ${special.filter((x) => x === u).length}`).join(', ')}`,
+    );
     let overlap = 0;
     let sameNext = 0;
     let sameOther = 0;
@@ -522,17 +533,30 @@ async function drive(dir: string, label: string): Promise<void> {
 
   section('Kerbs (15 cm): hit square and at a shallow angle');
   {
-    // A straight street lane near the centre with 60 m of the same lane ahead.
+    // A straight street lane near the centre with 60 m of the same lane ahead, and no building, pole or planter in
+    // the runs below (25 m to the right square on, the shallow ones' 7 m over 50 m): a kerb test, not a wall test.
     const f = data.f32;
     const [ro, rn] = j.roads;
+    const boxes: number[][] = [];
+    // Buildings with 2 m to spare, poles and planters with 1 m.
+    for (const c of j.cells) for (const [off, n, pad] of [[...c.boxes, 2], [...(c.propBoxes ?? [0, 0]), 1]]) for (let k = 0; k < n; k++) boxes.push([...f.subarray(off + k * 10, off + k * 10 + 6), pad]);
+    const clearAt = (x: number, z: number) => boxes.every((b) => Math.abs(x - b[0]) > b[3] + b[6] || Math.abs(z - b[2]) > b[5] + b[6]);
     let pick = -1;
     for (let i = 0; i < rn && pick < 0; i++) {
       const o = ro + i * 5;
       if (f[o + 4] !== kerbOffset('street')) continue;
       const p = new THREE.Vector3(f[o] + Math.sin(f[o + 3]) * 60, 0, f[o + 2] + Math.cos(f[o + 3]) * 60);
       const q = track.nearestRoad(p);
-      if (Math.hypot(q[0] - p.x, q[2] - p.z) < 1 && Math.cos(q[3] - f[o + 3]) > 0.999 && Math.hypot(f[o], f[o + 2]) < 400) pick = i;
+      if (Math.hypot(q[0] - p.x, q[2] - p.z) >= 1 || Math.cos(q[3] - f[o + 3]) <= 0.999 || Math.hypot(f[o], f[o + 2]) >= 800) continue;
+      const [fx, fz, rx, rz] = [Math.sin(f[o + 3]), Math.cos(f[o + 3]), -Math.cos(f[o + 3]), Math.sin(f[o + 3])];
+      let clear = true;
+      for (let a = 0; a <= 25 && clear; a += 1) clear = clearAt(f[o] + rx * a, f[o + 2] + rz * a);
+      for (let a = 0; a <= 50 && clear; a += 2) for (let b = 0; b <= 7 && clear; b += 1) clear = clearAt(f[o] + fx * a + rx * b, f[o + 2] + fz * a + rz * b);
+      // The shallow runs end on the sidewalk, not in a side street.
+      for (let a = 20; a <= 50 && clear; a += 2) clear = !track.onRoad(new THREE.Vector3(f[o] + fx * a + rx * 6, 0, f[o + 2] + fz * a + rz * 6));
+      if (clear) pick = i;
     }
+    if (pick < 0) throw new Error('No clear street kerb for the kerb test');
     const o = ro + pick * 5;
     const [x, z, h] = [f[o], f[o + 2], f[o + 3]];
     // Right of heading h: forward (sin h, cos h), right (−cos h, sin h) = heading h − π/2.

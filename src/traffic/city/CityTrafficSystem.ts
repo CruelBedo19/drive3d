@@ -64,6 +64,8 @@ const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 const MAX_BRAKE = 8;
 /** Braking a driver plans with before a turn or a red light, m/s². */
 const PLAN_BRAKE = 2.2;
+/** Vehicles longer than this (buses, lorries) sweep wide in a turn, m. */
+const LONG = 7;
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -303,17 +305,18 @@ export class CityTrafficSystem {
       leadId = o.id;
     } else {
       let dist = seg.length - v.s;
-      // Someone just turned off this lane another way: still in front until it has pulled away.
-      if (seg.kind === 'lane') {
-        for (const c of seg.next) {
-          const o = this.occ[c][0];
-          if (!o || c === v.route[0]) continue;
-          const gap = dist + o.s - (o.klass.length + v.klass.length) / 2;
-          if (o.s < o.klass.length + 2 && gap < best) {
-            best = gap;
-            leadV = o.state === 'crashed' ? 0 : o.v;
-            leadId = o.id;
-          }
+      // Someone just turned off this lane another way (or this vehicle did, onto a connector beside its): still in
+      // front until it has pulled away by both lengths, the two paths being side by side at first (a bus's swept
+      // path reaches the next one).
+      const turnedOff = seg.kind === 'lane' ? seg.next.filter((c) => c !== v.route[0]) : g[seg.from].next.filter((c) => c !== seg.id);
+      for (const c of turnedOff) {
+        const o = this.occ[c][0];
+        if (!o) continue;
+        const gap = (seg.kind === 'lane' ? dist + o.s : o.s - v.s) - (o.klass.length + v.klass.length) / 2;
+        if (o.s < o.klass.length + v.klass.length + 2 && (seg.kind === 'lane' || o.s > v.s) && gap < best) {
+          best = gap;
+          leadV = o.state === 'crashed' ? 0 : o.v;
+          leadId = o.id;
         }
       }
       for (const id of v.route) {
@@ -444,9 +447,13 @@ export class CityTrafficSystem {
       if (!v.stopped && toLine < 3 && v.v < 0.4) v.stopped = true;
       if (!v.stopped) return 'dur';
     }
-    // Junction box: nobody on (or committed to) a crossing / merging connector.
+    // Junction box: nobody on (or committed to) a crossing / merging connector; no turning beside a vehicle turning
+    // on the next connector when either is a bus or lorry (its swept path reaches the other).
     for (const k of conn.conflicts) {
       if (this.occ[k].length || this.claims[k] || this.tails[k]) return 'kavşak dolu';
+    }
+    for (const k of conn.beside) {
+      if (this.occ[k].some((o) => o.klass.length > LONG || v.klass.length > LONG)) return 'kavşak dolu';
     }
     // Room on the exit lane.
     const exit = g[conn.to];

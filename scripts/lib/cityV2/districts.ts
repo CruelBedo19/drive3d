@@ -36,7 +36,7 @@ export interface DistrictProfile {
   alley: number;
   /** Chance a big enough block is kept whole as a large parcel. */
   large: number;
-  /** Uses for its large parcels, most likely first. */
+  /** Uses for its large parcels, most likely first (a use listed twice comes up twice as often). */
   uses: ParcelUse[];
   /** Relative reach of a centre of this kind (bigger: larger cells). */
   reach: number;
@@ -50,7 +50,7 @@ export const DISTRICT: Record<District, DistrictProfile> = {
   downtown: { blockSpan: [36, 66], continueChance: 0.7, lChance: 0.06, alley: 1, large: 0.12, uses: ['landmark', 'hospital'], reach: 1.05, minDepth: 24, minGap: 24 },
   commercial: { blockSpan: [90, 150], continueChance: 0.5, lChance: 0.1, alley: 0.3, large: 0.5, uses: ['mall', 'parking', 'stadium'], reach: 1, minDepth: 30, minGap: 30 },
   residential: { blockSpan: [66, 114], continueChance: 0.18, lChance: 0.32, alley: 0.65, large: 0.15, uses: ['park', 'hospital'], reach: 1.1, minDepth: 26, minGap: 30 },
-  industrial: { blockSpan: [130, 230], continueChance: 0.3, lChance: 0.06, alley: 0.25, large: 0.7, uses: ['factory', 'warehouse', 'parking'], reach: 1.15, minDepth: 36, minGap: 30 },
+  industrial: { blockSpan: [130, 230], continueChance: 0.3, lChance: 0.06, alley: 0.25, large: 0.7, uses: ['factory', 'warehouse', 'factory', 'warehouse', 'parking'], reach: 1.15, minDepth: 36, minGap: 30 },
 };
 
 export interface DistrictCentre {

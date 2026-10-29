@@ -40,6 +40,8 @@ export interface CitySeg {
   /** Connector: straight on into the neighbouring lane (a lane change across the junction). */
   shift: boolean;
   conflicts: number[];
+  /** Turning connector: other turns at the same node (from another lane) running side by side with it, not crossing or merging. */
+  beside: number[];
 }
 
 export interface CityNode {
@@ -60,6 +62,8 @@ const LIMIT_KMH: Record<RoadClass, number> = { arterial3: 60, boulevard: 55, ave
 const TURN_LATERAL = 2.4;
 /** Two connectors conflict if their centre lines come closer than this, m (two car widths plus a margin). */
 const CONFLICT_DISTANCE = 2.4;
+/** Turning connectors closer than this run side by side: apart enough for two cars, not for a bus beside a car, m. */
+const BESIDE_DISTANCE = 4.2;
 /** Distance from the junction box to the stop line, m (zebra crossing in between; scripts/lib/cityV2/props.ts). */
 const STOP_LINE = 4;
 const BIN = 100;
@@ -229,10 +233,14 @@ export class CityLaneGraph {
           if (a.from === b.from) continue;
           const p = box[i];
           const q = box[j];
-          const apart = p[0] > q[2] + CONFLICT_DISTANCE || q[0] > p[2] + CONFLICT_DISTANCE || p[1] > q[3] + CONFLICT_DISTANCE || q[1] > p[3] + CONFLICT_DISTANCE;
-          if (a.to === b.to || (!apart && minDistance(a, b) < CONFLICT_DISTANCE)) {
+          const apart = p[0] > q[2] + BESIDE_DISTANCE || q[0] > p[2] + BESIDE_DISTANCE || p[1] > q[3] + BESIDE_DISTANCE || q[1] > p[3] + BESIDE_DISTANCE;
+          const d = a.to === b.to || apart ? Infinity : minDistance(a, b);
+          if (a.to === b.to || d < CONFLICT_DISTANCE) {
             a.conflicts.push(b.id);
             b.conflicts.push(a.id);
+          } else if (d < BESIDE_DISTANCE && a.turn !== 'straight' && b.turn !== 'straight') {
+            a.beside.push(b.id);
+            b.beside.push(a.id);
           }
         }
       }
@@ -285,6 +293,7 @@ export class CityLaneGraph {
       turn: 'straight',
       shift: false,
       conflicts: [],
+      beside: [],
     };
     this.segs.push(seg);
     return seg;

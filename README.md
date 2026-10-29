@@ -177,9 +177,10 @@ Always on in `npm run dev`; in a production build only with `?admin` (a hidden s
     vertex-coloured quads 12 mm above the asphalt with polygon offset, drawn after it (the Autobahn approach; an
     alpha-tested atlas lost them at grazing angles). Colliders: asphalt as drawn; a ramp across every kerb line, 0.5 m
     out on the asphalt to 1.9 m into the block (15 cm over 2.4 m), so wheels roll on and off kerbs at town speeds.
-  - Buildings (`scripts/lib/cityV2/buildings.ts`): every ordinary block is built on; large parcels (park, stadium,
-    hospital, mall, factory, warehouse, car park), the plaza and the landmark block stay empty for their own assets
-    (`--sample-areas`: only the four A3 sample areas, one per district). Prototypes are assembled from the kit's facade
+  - Buildings (`scripts/lib/cityV2/buildings.ts`): every ordinary block is built on, along its streets and (commercial,
+    residential, industrial) inside behind the street rows; malls, stadiums, hospitals, factories, warehouses and the
+    landmark block get a complex in their middle (`parcelCore`), with the parking or yard round it; parks, car parks
+    and the plaza stay open. Residential lots are lawn (`garden` ground). (`--sample-areas`: only the four A3 sample areas, one per district). Prototypes are assembled from the kit's facade
     modules (2 / 4 m wide, 1 / 3 m tall; interior walls, floors and glass dropped, the fake-interior card becomes the
     window), per style (loft, classic, red brick, modern, stone, houses with slate mansards, low works halls),
     frontage / depth / floors / window rhythm / shopfronts / entrance / corner pilasters / cornice, and per side a
@@ -217,8 +218,8 @@ Always on in `npm run dev`; in a production build only with `?admin` (a hidden s
     or three lanes), stop / yield on minor approaches to bigger roads, 30 zones entering residential streets,
     crossing signs. Car parks, mall and yard parking get stall lines and `props.spots` (x, z, yaw, lot) for later
     parked cars; the park gets paths, groves, benches, lamps and bins; factories and warehouses a fence with a gate,
-    container stacks, a loading zone, floodlights; malls and the landmark keep their middle free
-    (`props.reserved`) for their own models. `props.junctions` lists each junction's control per approach (signal
+    container stacks, a loading zone, floodlights round their halls; `props.reserved` lists the built middles of
+    malls, hospitals and the landmark. `props.junctions` lists each junction's control per approach (signal
     group, stop line) for later traffic AI. Runtime (`CityV2Props.ts`, `props/PropRenderer.ts`): instanced per
     prototype and level (one InstancedMesh per part, sized for the whole town), culled per 125 m chunk by distance
     (per prototype: ~110 m small things, ~200 m furniture, ~460 m trees / lamps / signals, a cheaper level for trees
@@ -244,8 +245,10 @@ Always on in `npm run dev`; in a production build only with `?admin` (a hidden s
     or committed to a conflicting connector (or has its tail still in one), when there is room on the exit lane for
     it and everyone heading there, when the player is not in its path, and after giving way: side roads to the main
     road, left turns to oncoming traffic, at equal junctions to the right (after 6 s waiting only the box must be
-    clear). Two junctions joined by a lane too short to wait on are entered as one. 30 / 60 / 90 / 120 vehicles
-    (density setting, key T) between 170 and 380 m from the player (70 m behind it), gone beyond 430 m; gridlocked
+    clear). Two junctions joined by a lane too short to wait on are entered as one. A vehicle that turned off the same
+    lane another way stays a leader until both have pulled clear, and nobody turns beside a bus or lorry turning on
+    the next connector (their swept paths touch). 40 / 80 / 105 / 125 vehicles
+    (density setting, key T) between 140 and 340 m from the player (60 m behind it), gone beyond 390 m; gridlocked
     ones (standing 60 s, out of sight) are removed. Near vehicles (< 80 m) get a pooled kinematic Rapier box that
     turns into a real mass on contact; a hit leaves a wreck with hazard lights. F2: counts, why vehicles wait, the
     selected vehicle; debug layer "Trafik şeritleri" draws the lane graph. Not yet: lane changes between junctions,

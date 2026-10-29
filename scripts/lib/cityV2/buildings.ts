@@ -1,7 +1,7 @@
 /**
  * City V2 buildings: procedural building prototypes from the kit's facade
- * modules, and their placement on every ordinary block of the town (or only
- * the A3 sample areas, one per district). Pure function of (layout, kit, seed).
+ * modules, and their placement on every ordinary block and large parcel of the
+ * town (or only the A3 sample areas, one per district). Pure function of (layout, kit, seed).
  *
  * Modules: kit wall / window / shopfront / door / cornice / column / roof
  * pieces (2 or 4 m wide, 1 or 3 m tall, pivot bottom centre, facade facing +Z),
@@ -21,9 +21,11 @@
  * alleys are kept 2.5 m clear: their kerb ramp reaches into the lot), corners
  * first, and fills it with lots that fit the block and the buildings already
  * there. District rules: street wall downtown, gaps and front yards in
- * residential streets, big low buildings far apart in industry. Large parcels
- * (malls, stadiums, hospitals, car parks, factories, warehouses, parks), the
- * plaza and the landmark block stay empty. Then each district gets a catalogue
+ * residential streets, big low buildings apart in industry. Outside downtown
+ * the inside of a block behind the street rows is filled too (packArea), and
+ * malls, stadiums, hospitals, factories, warehouses and the landmark block get
+ * a complex in their middle (parcelCore); car parks, parks and the plaza stay
+ * open. Then each district gets a catalogue
  * of prototypes that fit all its lots (sizes, both height classes, styles,
  * every floor count), and each lot the one that fits best (stretched to it,
  * unlike its neighbours down the street, a colour variant where it stands
@@ -51,7 +53,7 @@ import {
   type Role,
 } from '../../../src/world/cityv2/buildingKit';
 import type { Kit } from './kit';
-import type { CityLayout, District, LayoutBlock } from './layout';
+import type { CityLayout, District, LayoutBlock, ParcelUse } from './layout';
 import { stream, type Rng } from './rng';
 
 // --- modules ---------------------------------------------------------------------------------------
@@ -754,6 +756,8 @@ interface DistrictRules {
   /** Space between neighbours, m [min, max]; chance of none at all. */
   gap: [number, number];
   touching: number;
+  /** Clearance kept round the buildings filling the inside of a block behind the street rows, m; none: the inside stays a yard. */
+  interior?: number;
   /** Prototypes the district's catalogue grows to before it only reuses (more only where none fits). */
   catalogue: number;
   /** Stretch of a reused prototype's frontage and depth to the lot [min, max]. */
@@ -790,9 +794,10 @@ const RULES: Record<District, DistrictRules> = {
     widths: [16, 20, 24, 32],
     depths: [14, 16, 20, 24],
     corners: [24, 20, 16],
-    setback: [0.6, 2],
-    gap: [4, 8],
-    touching: 0.55,
+    setback: [0.6, 1.2],
+    gap: [2, 4],
+    touching: 0.7,
+    interior: 4,
     catalogue: 20,
     fit: [SHRINK, STRETCH],
     stretch: true,
@@ -806,9 +811,10 @@ const RULES: Record<District, DistrictRules> = {
     widths: [8, 10, 12, 14],
     depths: [10, 12],
     corners: [],
-    setback: [3, 5],
-    gap: [4, 8],
+    setback: [2, 4],
+    gap: [2, 4],
     touching: 0,
+    interior: 4,
     catalogue: 18,
     fit: [SHRINK, STRETCH],
     stretch: false,
@@ -822,9 +828,10 @@ const RULES: Record<District, DistrictRules> = {
     widths: [24, 32, 40],
     depths: [20, 24, 32],
     corners: [],
-    setback: [6, 10],
-    gap: [12, 20],
+    setback: [4, 8],
+    gap: [6, 12],
     touching: 0,
+    interior: 8,
     catalogue: 10,
     fit: [SHRINK, STRETCH],
     stretch: false,
@@ -1107,7 +1114,8 @@ interface Side {
   street: boolean;
 }
 
-function sidesOf(poly: [number, number][], block: LayoutBlock): Side[] {
+/** Sides of a lot polygon; without a block every side counts as a street side. */
+function sidesOf(poly: [number, number][], block?: LayoutBlock): Side[] {
   const out: Side[] = [];
   for (let i = 0; i < poly.length; i++) {
     const a = poly[i];
@@ -1118,7 +1126,7 @@ function sidesOf(poly: [number, number][], block: LayoutBlock): Side[] {
     const mx = (a[0] + b[0]) / 2;
     const mz = (a[1] + b[1]) / 2;
     if (pointInPoly(poly, mx + n[0] * 0.05, mz + n[1] * 0.05)) n = [-n[0], -n[1]];
-    out.push({ i, a, b, dir, n, len, street: block.sides[i] !== 'alley' });
+    out.push({ i, a, b, dir, n, len, street: !block || block.sides[i] !== 'alley' });
   }
   return out;
 }
@@ -1184,6 +1192,91 @@ export function checkpointAreas(l: CityLayout): { id: string; label: string; dis
  * hospital, mall, factory, warehouse, parking) and the plaza stay empty for their own assets. `sampleOnly`
  * builds the A3 sample areas alone (the checkpoint). The sample areas are reported either way (benchmark views).
  */
+/**
+ * Buildings on the large parcels, by use: the district whose buildings they are, tall or not, clearance between
+ * them (0: one touching complex), the margin round them as a share of the parcel each way (parking, yard).
+ */
+const COMPLEX: Partial<Record<ParcelUse, { district: District; tall: boolean; pad: number; margin: number }>> = {
+  mall: { district: 'commercial', tall: false, pad: 0, margin: 0.25 },
+  stadium: { district: 'commercial', tall: false, pad: 0, margin: 0.25 },
+  hospital: { district: 'commercial', tall: true, pad: 4, margin: 0.25 },
+  landmark: { district: 'downtown', tall: true, pad: 2, margin: 0.25 },
+  factory: { district: 'industrial', tall: false, pad: 8, margin: 0.16 },
+  warehouse: { district: 'industrial', tall: false, pad: 6, margin: 0.16 },
+};
+
+/**
+ * Where a large parcel's buildings stand: the middle (less the use's margin each way) of the largest rectangle on the
+ * parcel (all of it, or the larger arm of an L), or null for a parcel without buildings (park, car park, plaza,
+ * ordinary blocks).
+ */
+export function parcelCore(b: LayoutBlock): Rect | null {
+  const use = b.kind === 'large' ? b.use : b.landmark ? 'landmark' : undefined;
+  if (!use || !COMPLEX[use]) return null;
+  // Rectilinear lot: its largest inner rectangle has corners on the lot's own x and z lines.
+  const xs = [...new Set(b.lot.map((p) => p[0]))].sort((p, q) => p - q);
+  const zs = [...new Set(b.lot.map((p) => p[1]))].sort((p, q) => p - q);
+  let best: Rect | null = null;
+  let area = 0;
+  for (let i = 0; i < xs.length; i++) for (let k = i + 1; k < xs.length; k++) for (let j = 0; j < zs.length; j++) for (let m = j + 1; m < zs.length; m++) {
+    const r: Rect = [xs[i], zs[j], xs[k], zs[m]];
+    const a = (r[2] - r[0]) * (r[3] - r[1]);
+    if (a > area && rectInPoly(b.lot, r)) {
+      best = r;
+      area = a;
+    }
+  }
+  if (!best) return null;
+  const w = (best[2] - best[0]) * COMPLEX[use].margin;
+  const d = (best[3] - best[1]) * COMPLEX[use].margin;
+  return [best[0] + w, best[1] + d, best[2] - w, best[3] - d];
+}
+
+/**
+ * Fills the free part of `areas` (rectilinear; a building must be inside every one) with buildings of the
+ * district's sizes: on a 2 m scan, at each free spot the first size that fits (larger ones first, in random order),
+ * `pad` clear of everything in `taken` (which `push` must grow), its front on the nearest of `sides`.
+ */
+function packArea(areas: [number, number][][], sides: Side[], taken: { rect: Rect }[], rules: DistrictRules, pad: number, rng: Rng, push: (s: Side, rect: Rect, wp: number, dp: number) => void): void {
+  let [x0, z0, x1, z1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [x, z] of areas[0]) {
+    x0 = Math.min(x0, x);
+    z0 = Math.min(z0, z);
+    x1 = Math.max(x1, x);
+    z1 = Math.max(z1, z);
+  }
+  const minW = Math.min(...rules.widths);
+  const minD = Math.min(...rules.depths);
+  const sizes = rules.widths.flatMap((w) => rules.depths.map((d) => [w, d] as const));
+  const clear = (r: Rect) => areas.every((a) => rectInPoly(a, r)) && !taken.some((p) => overlaps(p.rect, r, pad));
+  for (let z = z0; z + minD <= z1 + EPS; z += 2) {
+    for (let x = x0; x + minD <= x1 + EPS; x += 2) {
+      if (taken.some((p) => overlaps(p.rect, [x, z, x, z], pad))) continue;
+      // The nearest side (to a small building here) decides which way it faces.
+      const cx = x + minW / 2;
+      const cz = z + minD / 2;
+      let side = sides[0];
+      let best = Infinity;
+      for (const s of sides) {
+        const t = Math.max(0, Math.min(s.len, (cx - s.a[0]) * s.dir[0] + (cz - s.a[1]) * s.dir[1]));
+        const dist = Math.hypot(cx - s.a[0] - s.dir[0] * t, cz - s.a[1] - s.dir[1] * t);
+        if (dist < best) {
+          best = dist;
+          side = s;
+        }
+      }
+      const along = Math.abs(side.n[1]) > 0.5;
+      const order = sizes.map(([w, d]) => ({ w, d, k: w * d * rng.range(0.6, 1.4) })).sort((a, b) => b.k - a.k);
+      for (const { w, d } of order) {
+        const rect: Rect = along ? [x, z, x + w, z + d] : [x, z, x + d, z + w];
+        if (!clear(rect)) continue;
+        push(side, rect, w, d);
+        break;
+      }
+    }
+  }
+}
+
 export function generateBuildings(l: CityLayout, modules: Module[], seed: number, sampleOnly = false): Buildings {
   const moduleIndex = new Map(modules.map((m, i) => [m.name, i]));
   const protos: BuildingProto[] = [];
@@ -1383,17 +1476,20 @@ export function generateBuildings(l: CityLayout, modules: Module[], seed: number
           }
         }
       }
-      // Then the street sides, left to right.
+      // Then the street sides, left to right. Without corner buildings a row keeps the setback from a street round
+      // the corner as well (no side wall flush with the next street's sidewalk).
       for (const s of sides) {
         if (!s.street) continue;
-        let t = 0;
+        const keep = (k: number) => (!rules.corners.length && sides[(s.i + k + sides.length) % sides.length].street ? rules.setback[0] : 0);
+        const end = s.len - keep(1);
+        let t = keep(-1);
         let prev = -1;
         let guard = 0;
-        while (t < s.len - 4 && guard++ < 400) {
+        while (t < end - 4 && guard++ < 400) {
           // Facade line behind the lot line; the buildable polygon already keeps the cornice overhang.
           const setback = Math.max(0, Math.round((rules.setback[0] + rng.next() * (rules.setback[1] - rules.setback[0]) - OVERHANG) * 2) / 2);
           // Room up to the end of the side or the next building already standing on it.
-          let room = s.len - t;
+          let room = end - t;
           for (const [i, p] of placed.entries()) {
             const lo = Math.min((p.rect[0] - s.a[0]) * s.dir[0] + (p.rect[1] - s.a[1]) * s.dir[1], (p.rect[2] - s.a[0]) * s.dir[0] + (p.rect[3] - s.a[1]) * s.dir[1]);
             const depth = Math.min(...[[p.rect[0], p.rect[1]], [p.rect[2], p.rect[3]]].map(([x, z]) => (s.a[0] - x) * s.n[0] + (s.a[1] - z) * s.n[1]));
@@ -1430,6 +1526,12 @@ export function generateBuildings(l: CityLayout, modules: Module[], seed: number
           }
         }
       }
+      // Then the inside of the block behind the street rows (it would stay an empty yard): more buildings, none
+      // nearer a street than the district's deepest setback (not in the gaps of the street rows).
+      if (rules.interior !== undefined) {
+        const inner = offsetPoly(build, sides.map((s) => (s.street ? rules.setback[1] : 0)));
+        packArea([inner, build], sides, placed, rules, rules.interior, stream(seed, `inner${bid}`), (s, rect, wp, dp) => commit(s, rect, wp, dp, wp, dp));
+      }
       // Once the block is complete each wall knows what it faces.
       for (const [i, q] of placed.entries()) {
         const n = q.s.n;
@@ -1437,6 +1539,23 @@ export function generateBuildings(l: CityLayout, modules: Module[], seed: number
         const kinds: [SideKind, SideKind, SideKind] = [sideKind(i, [-right[0], -right[1]]), sideKind(i, right), sideKind(i, [-n[0], -n[1]])];
         lots.push({ district: block.district, block: bid, wa: q.wa, da: q.da, wp: q.wp, dp: q.dp, sides: kinds, tall, rect: q.rect, n });
       }
+    }
+  }
+
+  // Large parcels with buildings (mall, hospital, stadium, landmark, factory, warehouse): a complex in the
+  // middle (parcelCore), facades all round; the parking or yard round it is props.ts's.
+  if (!sampleOnly) {
+    for (const b of l.blocks) {
+      const core = parcelCore(b);
+      if (!core) continue;
+      const c = COMPLEX[b.use ?? 'landmark']!;
+      const [x0, z0, x1, z1] = core;
+      const poly: [number, number][] = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
+      const taken: { rect: Rect }[] = [];
+      packArea([poly], sidesOf(poly), taken, RULES[c.district], c.pad, stream(seed, `complex${b.id}`), (s, rect, wp, dp) => {
+        taken.push({ rect });
+        lots.push({ district: c.district, block: b.id, wa: wp, da: dp, wp, dp, sides: ['S', 'S', 'S'], tall: c.tall, rect, n: s.n });
+      });
     }
   }
 

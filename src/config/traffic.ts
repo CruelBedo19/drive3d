@@ -199,12 +199,12 @@ export const TRAFFIC = {
  */
 export const CITY_TRAFFIC = {
   /** Vehicles at once per density setting. */
-  count: { low: 30, medium: 60, high: 90, veryHigh: 120 } as Record<Exclude<TrafficDensity, 'off'>, number>,
+  count: { low: 40, medium: 80, high: 105, veryHigh: 125 } as Record<Exclude<TrafficDensity, 'off'>, number>,
   /** New vehicles appear between these distances from the player, m (closer only behind the player), and leave beyond `despawn`. */
-  spawnMin: 170,
-  spawnBehindMin: 70,
-  spawnMax: 380,
-  despawn: 430,
+  spawnMin: 140,
+  spawnBehindMin: 60,
+  spawnMax: 340,
+  despawn: 390,
   /** Distance tiers, m: near vehicles get a collision body and decide every step. */
   nearRange: 80,
   mediumRange: 250,

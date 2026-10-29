@@ -28,6 +28,7 @@ import { CELL, LEVEL, RASTER, isJunction, junctionHalf, medianRects, type Ground
 import type { Kit } from './kit';
 import { polygonArea, type CityLayout, type District, type LayoutBlock } from './layout';
 import { hashUnit, stream, streamSeed } from './rng';
+import { parcelCore } from './buildings';
 
 export interface PropInstance {
   proto: number;
@@ -85,7 +86,7 @@ interface DistrictRule {
 const DISTRICT_RULES: Record<District, DistrictRule> = {
   downtown: { treeSide: 0.7, treeSpacing: 14, trees: ['tree_small', 'tree_medium'], pits: true, verge: 0, bench: 0.2, bin: 0.16, planter: 0.1, bikeRack: 0.07, hydrantEvery: 80, utilityEvery: 160, bollards: 0.65, busStops: true, yard: 0, lampScale: 0.8 },
   commercial: { treeSide: 0.42, treeSpacing: 20, trees: ['tree_small', 'tree_medium'], pits: true, verge: 0, bench: 0.06, bin: 0.07, planter: 0.06, bikeRack: 0.02, hydrantEvery: 110, utilityEvery: 140, bollards: 0.2, busStops: true, yard: 0, lampScale: 1.1 },
-  residential: { treeSide: 0.85, treeSpacing: 13, trees: ['tree_small', 'tree_medium', 'tree_medium', 'tree_large'], pits: false, verge: 0.75, bench: 0.012, bin: 0.01, planter: 0, bikeRack: 0, hydrantEvery: 120, utilityEvery: 130, bollards: 0, busStops: false, yard: 0.3, lampScale: 1.2 },
+  residential: { treeSide: 0.85, treeSpacing: 13, trees: ['tree_small', 'tree_medium', 'tree_medium', 'tree_large'], pits: false, verge: 0.75, bench: 0.012, bin: 0.01, planter: 0, bikeRack: 0, hydrantEvery: 120, utilityEvery: 130, bollards: 0, busStops: false, yard: 0.45, lampScale: 1.2 },
   industrial: { treeSide: 0.06, treeSpacing: 24, trees: ['tree_small'], pits: false, verge: 0, bench: 0, bin: 0.004, planter: 0, bikeRack: 0, hydrantEvery: 140, utilityEvery: 90, bollards: 0, busStops: false, yard: 0, lampScale: 1.4 },
 };
 
@@ -243,7 +244,7 @@ export function placeProps(l: CityLayout, raster: GroundRaster, buildings: { rec
     const r = def.radius * Math.max(o.s?.[0] ?? 1, o.s?.[2] ?? 1);
     // Poles need only their own few centimetres of sidewalk (a junction pole may stand close to a kerb corner).
     const foot = def.category === 'signal' || def.category === 'sign' || def.category === 'lamp' ? 0.25 : Math.min(r, 0.6) * 0.8;
-    const why = !onLabels(x, z, foot, labels) ? `ground ${labelAt(x, z)}` : !free(x, z, r + (o.pad ?? 0)) ? 'taken' : TALL.has(def.category) && !clearOfJunctions(x, z, def.category === 'tree' ? 1 : 0) ? 'junction' : '';
+    const why = !onLabels(x, z, foot, labels) ? `ground ${labelAt(x, z)}` : buildingGap(x, z) < foot ? 'building' : !free(x, z, r + (o.pad ?? 0)) ? 'taken' : TALL.has(def.category) && !clearOfJunctions(x, z, def.category === 'tree' ? 1 : 0) ? 'junction' : '';
     if (why) {
       // Junction furniture left out is reported (better missing than wrong).
       if (def.category === 'signal' || def.category === 'sign') out.skipped.push({ id, x, z, why });
@@ -522,7 +523,7 @@ export function placeProps(l: CityLayout, raster: GroundRaster, buildings: { rec
   for (const b of l.blocks.filter((b) => b.kind === 'buildings' && DISTRICT_RULES[b.district].yard > 0)) {
     const [x0, z0, x1, z1] = bbox(b.lot);
     const r = stream(seed, `yard${b.id}`);
-    const LT = [RASTER.LOT];
+    const LT = [RASTER.LOT, RASTER.GARDEN];
     for (let x = x0 + 2; x < x1 - 1; x += 7) for (let z = z0 + 2; z < z1 - 1; z += 7) {
       const px = x + r.range(-2, 2);
       const pz = z + r.range(-2, 2);
@@ -765,7 +766,7 @@ export function placeProps(l: CityLayout, raster: GroundRaster, buildings: { rec
       const fz = Math.cos(yaw);
       const lx = ex + fx * 14;
       const lz = ez + fz * 14;
-      if (onLabels(lx, lz, 6, LT) && inPolygon(insetPolygon(b.lot, 6), lx, lz)) {
+      if (onLabels(lx, lz, 6, LT) && inPolygon(insetPolygon(b.lot, 6), lx, lz) && buildingGap(lx, lz) > 9) {
         add('hatch', lx, RAISED + 0.01, lz, yaw, b.district, { s: [12, 1, 8], parcel: b.use });
         for (let k = -2; k <= 2; k++) tryAdd('barrier', lx + Math.cos(yaw) * 8 + fx * k * 2.1, lz - Math.sin(yaw) * 8 + fz * k * 2.1, yaw + Math.PI / 2, b.district, LT, { parcel: b.use });
       }
@@ -781,7 +782,7 @@ export function placeProps(l: CityLayout, raster: GroundRaster, buildings: { rec
       const rows = r.int(1, 2);
       const w = nRow * 2.6;
       const radius = Math.hypot(w, rows * 6.4) / 2 + 1;
-      if (!onLabels(cx, cz, radius + 2, LT) || !inPolygon(inner, cx, cz) || !free(cx, cz, radius) || (ent && Math.hypot(cx - ent[0], cz - ent[1]) < 24)) continue;
+      if (!onLabels(cx, cz, radius + 2, LT) || !inPolygon(inner, cx, cz) || !free(cx, cz, radius) || buildingGap(cx, cz) < radius + 4 || (ent && Math.hypot(cx - ent[0], cz - ent[1]) < 24)) continue;
       claim(cx, cz, radius);
       const yaw = alongX ? 0 : Math.PI / 2;
       for (let row = 0; row < rows; row++) for (let k = 0; k < nRow; k++) {
@@ -801,19 +802,19 @@ export function placeProps(l: CityLayout, raster: GroundRaster, buildings: { rec
     const index = out.lots.length;
     out.lots.push(lot);
     const before = out.spots.length;
-    stalls(b, LT, 6, null, index, 6);
+    stalls(b, LT, 6, parcelCore(b), index, 6);
     lot.spots[1] = (out.spots.length - before) / 4;
   }
 
   /**
-   * Mall / hospital / stadium / landmark: no building is invented. The middle is kept free for a later model;
-   * around it parking (with data), lamps and trees, an entrance with a sign.
+   * Mall / hospital / stadium / landmark: buildings in the middle (buildings.ts, parcelCore); around them parking
+   * (with data), lamps and trees, an entrance with a sign.
    */
   function reservedParcel(b: LayoutBlock): void {
     const [x0, z0, x1, z1] = bbox(b.lot);
     const w = x1 - x0;
     const d = z1 - z0;
-    const rect: [number, number, number, number] = [x0 + w * 0.25, z0 + d * 0.25, x1 - w * 0.25, z1 - d * 0.25];
+    const rect: [number, number, number, number] = parcelCore(b) ?? [x0 + w * 0.25, z0 + d * 0.25, x1 - w * 0.25, z1 - d * 0.25];
     out.reserved.push({ block: b.id, use: b.use ?? 'landmark', rect });
     const labels = [b.kind === 'plaza' ? RASTER.PLAZA : b.use === 'park' ? RASTER.PARK : b.use === 'parking' ? RASTER.PARKING : RASTER.LOT];
     if (b.use === 'mall' || b.use === 'stadium' || b.use === 'hospital') parkingLot(b, 'trees', rect);

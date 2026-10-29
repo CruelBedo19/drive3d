@@ -46,7 +46,7 @@ export const RAMP_IN = 1.9;
 /** Land around the town, m beyond the ring's outer sidewalk. */
 export const MARGIN = 120;
 
-export type GroundMat = 'asphalt' | 'sidewalk' | 'lot' | 'park' | 'plaza' | 'parking' | 'land' | 'median' | 'marking';
+export type GroundMat = 'asphalt' | 'sidewalk' | 'lot' | 'garden' | 'park' | 'plaza' | 'parking' | 'land' | 'median' | 'marking';
 
 /** Raster labels. */
 const NONE = 0;
@@ -59,12 +59,14 @@ const PARKING = 6;
 const LAND = 7;
 const CORNER = 8;
 const MEDIAN = 9;
+/** Residential lots: lawn round the houses. */
+const GARDEN = 10;
 /** Raster labels, for code outside this file (prop placement). */
-export const RASTER = { NONE, ASPHALT, SIDEWALK, LOT, PARK, PLAZA, PARKING, LAND, CORNER, MEDIAN } as const;
-const LABEL_MAT: Record<number, GroundMat> = { [ASPHALT]: 'asphalt', [SIDEWALK]: 'sidewalk', [LOT]: 'lot', [PARK]: 'park', [PLAZA]: 'plaza', [PARKING]: 'parking', [LAND]: 'land', [MEDIAN]: 'median' };
+export const RASTER = { NONE, ASPHALT, SIDEWALK, LOT, PARK, PLAZA, PARKING, LAND, CORNER, MEDIAN, GARDEN } as const;
+const LABEL_MAT: Record<number, GroundMat> = { [ASPHALT]: 'asphalt', [SIDEWALK]: 'sidewalk', [LOT]: 'lot', [GARDEN]: 'garden', [PARK]: 'park', [PLAZA]: 'plaza', [PARKING]: 'parking', [LAND]: 'land', [MEDIAN]: 'median' };
 const raised = (l: number) => l !== NONE && l !== ASPHALT && l !== CORNER;
 /** Texture repeat, m per tile. */
-const TILE: Record<GroundMat, number> = { asphalt: 6, sidewalk: 3, lot: 8, park: 6, plaza: 4, parking: 6, land: 10, median: 6, marking: 1 };
+const TILE: Record<GroundMat, number> = { asphalt: 6, sidewalk: 3, lot: 8, garden: 6, park: 6, plaza: 4, parking: 6, land: 10, median: 6, marking: 1 };
 
 export class MeshBuf {
   pos: number[] = [];
@@ -187,7 +189,7 @@ export function buildGround(l: CityLayout): Ground {
 
   fill(l.outline.edge, SIDEWALK);
   fill(l.outline.kerb, ASPHALT);
-  const lotLabel = (b: LayoutBlock) => (b.kind === 'plaza' ? PLAZA : b.use === 'park' ? PARK : b.use === 'parking' ? PARKING : LOT);
+  const lotLabel = (b: LayoutBlock) => (b.kind === 'plaza' ? PLAZA : b.use === 'park' ? PARK : b.use === 'parking' ? PARKING : b.kind === 'buildings' && b.district === 'residential' ? GARDEN : LOT);
   for (const b of l.blocks) {
     fill(b.kerb, SIDEWALK);
     fill(b.lot, lotLabel(b));

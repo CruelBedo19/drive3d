@@ -12,7 +12,7 @@
  *   kit.ts        the kit's glTF pieces, catalogue and convention checks
  *   layout.ts     street network, districts (districts.ts), blocks, large parcels, alleys
  *   ground.ts     asphalt / sidewalks / kerbs / lots / land from a 0.5 m raster, lane markings, colliders
- *   buildings.ts  building prototypes from the kit's facade modules, placed on every ordinary block
+ *   buildings.ts  building prototypes from the kit's facade modules, placed on every block and large parcel
  *   props.ts      street props (A4): lamps, trees, signals, signs, furniture, parking, park, yards
  *   minimap.ts    top-down map image
  *
@@ -75,6 +75,7 @@ const MATERIALS: Record<GroundMat, { base?: string; normal?: string; orm?: strin
   lot: { base: 'T_Concrete_BaseColor', normal: 'T_Concrete_Normal', ao: 'T_Concrete_ORM', roughness: 0.95, tint: [0.85, 0.85, 0.85] },
   plaza: { base: 'T_MarbleFloor_BaseColor', normal: 'T_MarbleFloor_Normal', orm: 'T_MarbleFloor_ORM' },
   park: { base: 'T_Dirt_BaseColor', normal: 'T_Dirt_Normal', roughness: 1, tint: [0.42, 0.62, 0.3] },
+  garden: { base: 'T_Dirt_BaseColor', normal: 'T_Dirt_Normal', roughness: 1, tint: [0.6, 0.8, 0.42] },
   land: { base: 'T_Dirt_BaseColor', normal: 'T_Dirt_Normal', roughness: 1, tint: [0.55, 0.6, 0.42] },
   median: { base: 'T_Dirt_BaseColor', normal: 'T_Dirt_Normal', roughness: 1, tint: [0.4, 0.58, 0.28] },
   marking: { roughness: 0.6 },

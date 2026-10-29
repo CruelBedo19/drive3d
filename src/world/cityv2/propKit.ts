@@ -215,6 +215,6 @@ export interface CityV2PropsJson {
   total: number;
   /** Prop collider boxes in all cells. */
   colliders: number;
-  /** Large parcels left for later assets (mall, hospital, stadium, landmark): block id, use, reserved rectangle. */
+  /** Large parcels with buildings in the middle (mall, hospital, stadium, landmark): block id, use, the built rectangle. */
   reserved: { block: number; use: string; rect: [number, number, number, number] }[];
 }
