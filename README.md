@@ -1,5 +1,7 @@
 # Drive3D — game flow, garage, weather, Autobahn with traffic
 
+> I was bored in class and wondered whether I could make something nicer than the usual browser racing games. This is what came out of trying.
+
 TypeScript + Vite + Three.js + Rapier 3D.
 
 ```bash
