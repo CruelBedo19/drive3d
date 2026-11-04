@@ -1,5 +1,6 @@
 import type { VehicleDefinition } from '../vehicleTypes';
 import { placeholderStreet } from './placeholderStreet';
+import { assetUrl } from '../../core/assetUrl';
 
 /**
  * Pipeline test car: placeholder physics with a generated, unbranded glTF model
@@ -12,7 +13,7 @@ export const testGltfCar: VehicleDefinition = {
     kind: 'gltf',
     bodyColor: 0x2f6fd2,
     model: {
-      url: '/assets/vehicles/test-car/test-car.glb',
+      url: assetUrl('/assets/vehicles/test-car/test-car.glb'),
       nodes: {
         body: 'Chassis',
         wheelFL: ['Wheel_Front_L', 'wheel_FL'],

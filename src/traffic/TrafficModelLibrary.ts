@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import MODEL_SIZES from '../config/trafficModels.json';
 import type { TrafficModelId } from '../config/traffic';
 import { withoutTransmission } from '../vehicle/visual/VehicleAssetCache';
+import { assetUrl } from '../core/assetUrl';
 
 /** One drawable piece of a traffic model: geometry in the model's frame and its material. */
 export interface TrafficModelPart {
@@ -13,7 +14,7 @@ export interface TrafficModelPart {
 export const TRAFFIC_MODEL_IDS = Object.keys(MODEL_SIZES) as TrafficModelId[];
 
 export function trafficModelUrl(id: TrafficModelId): string {
-  return `/assets/traffic/${id}.glb`;
+  return assetUrl(`/assets/traffic/${id}.glb`);
 }
 
 const library = new Map<TrafficModelId, TrafficModelPart[]>();

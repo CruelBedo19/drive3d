@@ -2,6 +2,8 @@
 
 > I was bored in class and wondered whether I could make something nicer than the usual browser racing games. This is what came out of trying.
 
+**[▶ Play it in your browser](https://cruelbedo19.github.io/drive3d/)** (desktop, keyboard; first load downloads a few MB of models)
+
 TypeScript + Vite + Three.js + Rapier 3D.
 
 ```bash

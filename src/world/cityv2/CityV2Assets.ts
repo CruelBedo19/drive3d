@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { createBuildingMaterials, decodeArrayTexture, type BuildingMaterials } from './CityV2Buildings';
 import { CITY_V2_URLS, parseCityV2Data, type CityV2Data, type CityV2Json } from './CityV2Data';
+import { assetUrl } from '../../core/assetUrl';
 
 export interface CityV2Assets {
   data: CityV2Data;
@@ -70,7 +71,7 @@ export function loadCityV2(onProgress?: (fraction: number, loadedMB: number, tot
     onProgress?.(0.92, total / 1e6, total / 1e6);
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
-    const gltf = await loader.parseAsync(glb, '/assets/city_v2/');
+    const gltf = await loader.parseAsync(glb, assetUrl('/assets/city_v2/'));
     gltf.scene.updateMatrixWorld(true);
     const ground = new Map<string, THREE.Mesh>();
     gltf.scene.traverse((o) => {

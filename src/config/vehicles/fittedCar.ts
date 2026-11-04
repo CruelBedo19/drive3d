@@ -4,6 +4,7 @@ import carFits from './carFits.json';
 import { placeholderStreet } from './placeholderStreet';
 import { realPhysics } from './realPhysics';
 import { REAL_SPECS } from './realSpecs';
+import { assetUrl } from '../../core/assetUrl';
 
 /** Measurements of a prepared model (scripts/prepare-cars.ts → carFits.json). */
 export interface CarFit {
@@ -79,7 +80,7 @@ export function fittedCar(o: FittedCarOptions): VehicleDefinition {
       kind: 'gltf',
       bodyColor: o.bodyColor,
       model: {
-        url: `/assets/vehicles/${o.id}/${o.id}.glb`,
+        url: assetUrl(`/assets/vehicles/${o.id}/${o.id}.glb`),
         nodes,
         scale: 1,
         rotationYDeg: 0,

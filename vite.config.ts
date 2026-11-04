@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  // GitHub Pages serves the site from a sub-path: the workflow sets VITE_BASE=/<repo>/. Local dev keeps '/'.
+  base: process.env.VITE_BASE ?? '/',
   server: {
     host: 'localhost',
     strictPort: true,

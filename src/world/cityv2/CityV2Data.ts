@@ -16,6 +16,7 @@
 import type { BuildingsJson } from './buildingKit';
 import type { CityV2PropsJson } from './propKit';
 import type { RoadClass } from './roadProfiles';
+import { assetUrl } from '../../core/assetUrl';
 
 /** Streaming-cell and prototype records (the layout the first city used, kept for this one). */
 export interface CityProto {
@@ -102,11 +103,11 @@ export interface CityV2Data {
 }
 
 export const CITY_V2_URLS = {
-  glb: '/assets/city_v2/city.glb',
-  json: '/assets/city_v2/city-data.json',
-  bin: '/assets/city_v2/city-data.bin',
-  albedo: '/assets/city_v2/buildings-albedo.webp',
-  normal: '/assets/city_v2/buildings-normal.webp',
+  glb: assetUrl('/assets/city_v2/city.glb'),
+  json: assetUrl('/assets/city_v2/city-data.json'),
+  bin: assetUrl('/assets/city_v2/city-data.bin'),
+  albedo: assetUrl('/assets/city_v2/buildings-albedo.webp'),
+  normal: assetUrl('/assets/city_v2/buildings-normal.webp'),
 } as const;
 
 export function parseCityV2Data(json: CityV2Json, bin: ArrayBuffer): CityV2Data {
