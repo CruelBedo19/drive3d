@@ -372,3 +372,9 @@ Vehicle frame: +Z forward, +Y up, +X left (glTF convention).
 
 See [CREDITS.md](CREDITS.md). In short: Nordschleife track data © OpenStreetMap contributors (ODbL 1.0),
 elevation from SRTM; parts of the track geometry code adapted from Nordschleife Racer (MIT).
+
+## License
+
+The code of this project is [MIT](LICENSE). Third-party material keeps its own license and is not covered by it:
+car models (CC BY 4.0), the Downtown City MegaKit (CC0), OpenStreetMap-derived track data (ODbL), and the projects in
+`third_party/` (each with its own `LICENSE`). Attribution and sources are in [CREDITS.md](CREDITS.md).
