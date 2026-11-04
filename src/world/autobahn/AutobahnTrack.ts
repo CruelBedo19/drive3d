@@ -408,7 +408,7 @@ export class AutobahnTrack implements Track {
   private makeTestPoints(): TestPoint[] {
     const out: TestPoint[] = [{ id: 'start', label: 'Start (km 0.6)', ...this.makeSpawn() }];
     this.gen.ensure(30000);
-    const labels: Record<string, string> = { tunnel: 'Tünel', bridge: 'Viyadük', exit: 'Ausfahrt', restArea: 'Raststätte', overpass: 'Üst geçit' };
+    const labels: Record<string, string> = { tunnel: 'Tunnel', bridge: 'Viaduct', exit: 'Ausfahrt', restArea: 'Raststätte', overpass: 'Overpass' };
     for (const kind of ['tunnel', 'bridge', 'exit', 'restArea'] as const) {
       const f = this.gen.features.find((x) => x.kind === kind);
       if (!f) continue;

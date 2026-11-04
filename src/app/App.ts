@@ -156,7 +156,7 @@ export class App {
    * the direct drive). Other cars load when asked for; the traffic models start loading in the background.
    */
   private async boot(): Promise<void> {
-    this.loading.set('Drive3D', 'Oyun dosyaları yükleniyor');
+    this.loading.set('Drive3D', 'Loading game files');
     this.loading.show();
     const direct = this.options.direct;
     const car = getCar(direct?.car ?? this.profile.value.carId);
@@ -274,37 +274,37 @@ export class App {
     this.loading.set(trackInfo(track)?.name ?? track, `${carTitle(car)} · ${setup}`);
     this.disposeSession();
     try {
-      this.loading.stage('Fizik motoru hazırlanıyor…');
+      this.loading.stage('Preparing physics engine…');
       await nextFrame();
       if (track === 'city') {
         // ~10 MB once per page (kept for later drives).
-        await loadCityV2((f, mb, total) => this.loading.progress(f, `Şehir yükleniyor · ${mb.toFixed(1)} / ${total.toFixed(1)} MB`));
+        await loadCityV2((f, mb, total) => this.loading.progress(f, `Loading city · ${mb.toFixed(1)} / ${total.toFixed(1)} MB`));
         if (token !== this.loadToken) return;
         this.loading.progress(null);
       }
       // The car's model (a cache hit when the garage or the menu showed it) and the traffic models.
       const carUrl = car.definition.visual.model?.url;
       if (carUrl && !vehicleAssets.has(carUrl)) {
-        this.loading.stage('Araç modeli yükleniyor…');
-        await vehicleAssets.prefetch(carUrl, (l, t) => this.loading.progress(t > 0 ? l / t : null, `Araç modeli yükleniyor · ${(l / 1e6).toFixed(1)}${t > 0 ? ` / ${(t / 1e6).toFixed(1)}` : ''} MB`));
+        this.loading.stage('Loading vehicle model…');
+        await vehicleAssets.prefetch(carUrl, (l, t) => this.loading.progress(t > 0 ? l / t : null, `Loading vehicle model · ${(l / 1e6).toFixed(1)}${t > 0 ? ` / ${(t / 1e6).toFixed(1)}` : ''} MB`));
         this.loading.progress(null);
         if (token !== this.loadToken) return;
       }
-      this.loading.stage('Trafik modelleri hazırlanıyor…');
+      this.loading.stage('Preparing traffic models…');
       await loadTrafficModels();
       if (token !== this.loadToken) return;
       const physics = await PhysicsWorld.create();
       if (token !== this.loadToken) return physics.dispose();
-      this.loading.stage('Pist oluşturuluyor…');
+      this.loading.stage('Building track…');
       await nextFrame();
       await nextFrame();
       if (token !== this.loadToken) return physics.dispose();
       const ctx: SessionContext = { container: this.container, renderer: this.renderer, input: this.input, settings: this.settings, admin: this.options.admin, carIds: CAR_REGISTRY.map((c) => c.id), frameTimer: this.frameTimer };
       const game = new Game(ctx, physics, { car, setup, track, weather: p.weather, hour: profileHour(p, PRESET_HOURS), seed: this.options.direct?.seed });
-      this.loading.stage('Araç modeli yükleniyor…');
+      this.loading.stage('Loading vehicle model…');
       await game.modelReady;
       if (token !== this.loadToken) return game.dispose();
-      this.loading.stage('Grafikler hazırlanıyor…');
+      this.loading.stage('Preparing graphics…');
       await game.warmUp();
       if (token !== this.loadToken) return game.dispose();
       this.game = game;
@@ -313,7 +313,7 @@ export class App {
       console.error(err);
       if (token !== this.loadToken) return;
       this.disposeSession();
-      this.loading.stage(`Yüklenemedi: ${err instanceof Error ? err.message : String(err)}`);
+      this.loading.stage(`Failed to load: ${err instanceof Error ? err.message : String(err)}`);
       setTimeout(() => {
         if (this.flow.state === 'LOADING') this.flow.go('MAIN_MENU');
       }, 2500);

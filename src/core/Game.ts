@@ -189,7 +189,7 @@ export class Game implements AdminHost {
       const k = s.controls;
       this.hud.setHelp(
         `${keyLabel(k.throttle)}/${keyLabel(k.brake)} gaz-fren · ${keyLabel(k.left)}/${keyLabel(k.right)} direksiyon · ${keyLabel(k.handbrake)} el freni · ` +
-          `${keyLabel(k.camera)} kamera · ${keyLabel(k.lookBack)} arkaya bak · ${keyLabel(k.headlights)} far · ${keyLabel(k.map)} harita · ${this.traffic ? `${keyLabel(k.trafficDensity)} trafik · ` : ''}${keyLabel(k.recover)} düzelt · ${keyLabel(k.respawn)} başa dön · Esc duraklat`,
+          `${keyLabel(k.camera)} camera · ${keyLabel(k.lookBack)} look back · ${keyLabel(k.headlights)} headlights · ${keyLabel(k.map)} map · ${this.traffic ? `${keyLabel(k.trafficDensity)} traffic · ` : ''}${keyLabel(k.recover)} recover · ${keyLabel(k.respawn)} respawn · Esc pause`,
       );
     });
 
@@ -636,7 +636,7 @@ export class Game implements AdminHost {
     }
     if (pressedBinding(input, c.headlights)) {
       this.headlights.toggle();
-      this.hud.showToast(`Farlar: ${this.headlights.on ? 'açık' : 'kapalı'}${this.headlights.mode === 'auto' ? ' (otomatik geçici olarak değişti)' : ''}`);
+      this.hud.showToast(`Headlights: ${this.headlights.on ? 'on' : 'off'}${this.headlights.mode === 'auto' ? ' (auto mode temporarily overridden)' : ''}`);
     }
     if (pressedBinding(input, c.map)) this.hud.setMapExpanded(!this.hud.mapExpanded);
     if (this.traffic && pressedBinding(input, c.trafficDensity)) {

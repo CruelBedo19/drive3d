@@ -56,7 +56,7 @@ export class CityV2Track implements Track {
   readonly fog = { near: 220, far: 1400 };
   /** Depth precision for kilometres of kerbs and markings; the hood camera still clears it. */
   readonly cameraNear = 0.25;
-  readonly attribution = 'Şehir · Downtown City MegaKit · Quaternius · CC0';
+  readonly attribution = 'City · Downtown City MegaKit · Quaternius · CC0';
   private readonly world: RAPIER.World;
   private readonly assets: CityV2Assets;
   private readonly cells = new Map<string, CellState>();
@@ -111,7 +111,7 @@ export class CityV2Track implements Track {
       }
     });
     this.spawn = { position: new THREE.Vector3(j.spawn.x, j.spawn.y, j.spawn.z), yaw: j.spawn.yaw };
-    this.testPoints = [{ id: 'start', label: 'Başlangıç', ...this.spawn }, ...j.teleports.map((t) => ({ id: t.id, label: t.label, position: new THREE.Vector3(t.x, t.y, t.z), yaw: t.yaw }))];
+    this.testPoints = [{ id: 'start', label: 'Start', ...this.spawn }, ...j.teleports.map((t) => ({ id: t.id, label: t.label, position: new THREE.Vector3(t.x, t.y, t.z), yaw: t.yaw }))];
 
     // Materials are shared by every cell: set them up once.
     const seen = new Set<THREE.Material>();
