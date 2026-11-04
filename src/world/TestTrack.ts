@@ -46,13 +46,13 @@ export class TestTrack implements Track {
   readonly killHeight = GAME_CONFIG.world.killHeight;
   readonly spawn: SpawnPoint = { position: new THREE.Vector3(TURN_RADIUS, 0, -80), yaw: 0 };
   readonly testPoints: readonly TestPoint[] = [
-    { id: 'start', label: 'Start (ana düzlük)', position: new THREE.Vector3(TURN_RADIUS, 0, -80), yaw: 0 },
-    { id: 'speed', label: 'Hız / fren testi (420 m)', position: new THREE.Vector3(92, 0, -205), yaw: 0 },
-    { id: 'chicane', label: 'Şikan (arka düzlük)', position: new THREE.Vector3(-TURN_RADIUS, 0, 80), yaw: Math.PI },
+    { id: 'start', label: 'Start (main straight)', position: new THREE.Vector3(TURN_RADIUS, 0, -80), yaw: 0 },
+    { id: 'speed', label: 'Speed / brake test (420 m)', position: new THREE.Vector3(92, 0, -205), yaw: 0 },
+    { id: 'chicane', label: 'Chicane (back straight)', position: new THREE.Vector3(-TURN_RADIUS, 0, 80), yaw: Math.PI },
     { id: 'skidpad', label: 'Skidpad (r = 15 m)', position: new THREE.Vector3(SKIDPAD.x + SKIDPAD.r, 0, SKIDPAD.z - 25), yaw: 0 },
     { id: 'slalom', label: 'Slalom (dubalar)', position: new THREE.Vector3(15, 0, -55), yaw: 0 },
     { id: 'ramp', label: 'Rampa', position: new THREE.Vector3(-20, 0, -90), yaw: 0 },
-    { id: 'wall', label: 'Çarpma duvarı', position: new THREE.Vector3(0, 0, 40), yaw: 0 },
+    { id: 'wall', label: 'Crash wall', position: new THREE.Vector3(0, 0, 40), yaw: 0 },
   ];
 
   readonly mapData: MapData = {

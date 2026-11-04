@@ -28,15 +28,15 @@ export class SettingsScreen extends Screen {
     super(parent, 'screen-settings');
     this.store = store;
     this.root.innerHTML = `
-      <header class="screen-head"><button class="back-btn" data-action="back" aria-label="Geri">‹</button><h1>AYARLAR</h1></header>
+      <header class="screen-head"><button class="back-btn" data-action="back" aria-label="Back">‹</button><h1>SETTINGS</h1></header>
       <div class="settings-layout">
         <nav class="settings-tabs">${SETTING_SECTIONS.map((s) => `<button data-action="tab" data-section="${s.id}">${esc(s.label)}</button>`).join('')}</nav>
         <section class="panel settings-body"></section>
       </div>
       <footer class="screen-foot settings-foot">
         <span class="settings-note" role="status"></span>
-        <button class="menu-btn" data-action="resetSection">BU BÖLÜMÜ SIFIRLA</button>
-        <button class="menu-btn" data-action="resetAll">VARSAYILANA DÖNDÜR</button>
+        <button class="menu-btn" data-action="resetSection">RESET SECTION</button>
+        <button class="menu-btn" data-action="resetAll">RESET TO DEFAULTS</button>
       </footer>`;
     this.body = this.q('.settings-body');
     this.note = this.q('.settings-note');
@@ -73,7 +73,7 @@ export class SettingsScreen extends Screen {
   private render(): void {
     for (const b of this.root.querySelectorAll<HTMLElement>('.settings-tabs button')) b.classList.toggle('is-on', b.dataset.section === this.section);
     const fields = SETTINGS_SCHEMA.filter((f) => f.section === this.section);
-    this.body.innerHTML = fields.map((f) => this.row(f)).join('') + (this.section === 'controls' ? `<p class="settings-fixed">Ok tuşları her zaman gaz / fren / direksiyon olarak da çalışır. Esc, F2–F4, P ve . oyun / geliştirici tuşlarıdır.</p>` : '') + (this.section === 'audio' ? `<p class="settings-fixed">Ses sistemi henüz ses çalmıyor; bu değerler ses geldiğinde kullanılacak.</p>` : '');
+    this.body.innerHTML = fields.map((f) => this.row(f)).join('') + (this.section === 'controls' ? `<p class="settings-fixed">Arrow keys always work for throttle / brake / steering. Esc, F2–F4, P and . are game / developer keys.</p>` : '') + (this.section === 'audio' ? `<p class="settings-fixed">The audio system is not yet playing sound; these values will be used when audio arrives.</p>` : '');
     this.sync(this.store.value);
   }
 
@@ -105,7 +105,7 @@ export class SettingsScreen extends Screen {
       const el = this.body.querySelector<HTMLInputElement>(`[data-key="${f.key}"]`);
       if (!el) continue;
       if (f.type === 'toggle') el.checked = v === true;
-      else if (f.type === 'key') el.textContent = this.capturing === f ? 'Bir tuşa bas…' : keyLabel(String(v));
+      else if (f.type === 'key') el.textContent = this.capturing === f ? 'Press a key…' : keyLabel(String(v));
       else el.value = String(v);
       if (f.type === 'range') {
         const out = this.body.querySelector(`[data-out="${f.key}"]`);
@@ -118,7 +118,7 @@ export class SettingsScreen extends Screen {
       for (const row of this.body.querySelectorAll<HTMLElement>('.settings-row')) row.classList.toggle('is-conflict', bad.has(row.dataset.row ?? ''));
       if (conflicts.length) {
         const name = (a: string) => SETTINGS_SCHEMA.find((f) => f.section === 'controls' && f.key === a)?.label ?? a;
-        this.note.textContent = `Uyarı: ${conflicts.map((c) => `${keyLabel(c.key)} → ${c.actions.map(name).join(' + ')}`).join(' · ')}`;
+        this.note.textContent = `Warning: ${conflicts.map((c) => `${keyLabel(c.key)} → ${c.actions.map(name).join(' + ')}`).join(' · ')}`;
         this.note.classList.add('is-warn');
         return;
       }
@@ -133,7 +133,7 @@ export class SettingsScreen extends Screen {
     this.stopCapture();
     this.capturing = SETTINGS_SCHEMA.find((f) => f.section === 'controls' && f.key === key) ?? null;
     if (!this.capturing) return;
-    this.note.textContent = 'Yeni tuşa bas (Shift ile birlikte de olabilir) · Esc iptal';
+    this.note.textContent = 'Press a key (can be combined with Shift) · Esc to cancel';
     this.note.classList.remove('is-warn');
     window.addEventListener('keydown', this.onCaptureKey, true);
     this.sync(this.store.value);
@@ -160,7 +160,7 @@ export class SettingsScreen extends Screen {
     }
     const binding = e.shiftKey ? `Shift+${e.code}` : e.code;
     if (!isBindableKey(binding)) {
-      this.note.textContent = `${keyLabel(binding)} kullanılamaz (oyun / geliştirici tuşu).`;
+      this.note.textContent = `${keyLabel(binding)} is reserved (game / developer key).`;
       this.note.classList.add('is-warn');
       return;
     }

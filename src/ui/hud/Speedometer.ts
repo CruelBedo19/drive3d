@@ -57,7 +57,7 @@ export class Speedometer {
       <div class="hud-speedo-lamps">
         <span class="hud-lamp" data-lamp="tc">TC</span>
         <span class="hud-lamp" data-lamp="abs">ABS</span>
-        <span class="hud-lamp hud-lamp-warn" data-lamp="hb" data-state="off">EL FRENİ</span>
+        <span class="hud-lamp hud-lamp-warn" data-lamp="hb" data-state="off">HANDBRAKE</span>
       </div>`;
     parent.appendChild(this.root);
     this.fill = this.root.querySelector('.hud-arc-fill') as SVGPathElement;

@@ -133,7 +133,7 @@ export const REAL_SPECS: Record<string, RealCarSpec> = {
     massKg: 1320,
     frontWeight: 0.42,
     drivetrain: 'RWD',
-    engine: { label: '4.2 boxer altı', powerKw: 379, powerRpm: 8400, torqueNm: 465, torqueRpm: [6000, 7500], idleRpm: 1500, redlineRpm: 9400, boosted: false },
+    engine: { label: '4.2 flat-six', powerKw: 379, powerRpm: 8400, torqueNm: 465, torqueRpm: [6000, 7500], idleRpm: 1500, redlineRpm: 9400, boosted: false },
     gearbox: { kind: 'sequential', ratios: [3.1, 2.25, 1.8, 1.5, 1.27, 1.1], finalDrive: 3.7, reverse: 3.2 },
     limiterKmh: 300,
     vmaxKmh: 300,

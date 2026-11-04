@@ -26,7 +26,7 @@ export async function preloadAssets(carUrl: string | undefined, carLabel: string
     const car = total > 0 ? loaded / total : 0;
     onProgress({ fraction: Math.min(1, car * 0.85 + (physicsReady ? 0.15 : 0)), label: carLabel, loadedMB: loaded / 1e6, totalMB: total / 1e6 });
   };
-  onProgress({ fraction: 0, label: 'Dosyalar hazırlanıyor…', loadedMB: 0, totalMB: 0 });
+  onProgress({ fraction: 0, label: 'Preparing files…', loadedMB: 0, totalMB: 0 });
   const physics = PhysicsWorld.warmUp().then(() => {
     physicsReady = true;
     report();
@@ -39,5 +39,5 @@ export async function preloadAssets(carUrl: string | undefined, carLabel: string
       })
     : Promise.resolve();
   await Promise.all([physics, car]);
-  onProgress({ fraction: 1, label: 'Hazır', loadedMB: total / 1e6, totalMB: total / 1e6 });
+  onProgress({ fraction: 1, label: 'Ready', loadedMB: total / 1e6, totalMB: total / 1e6 });
 }

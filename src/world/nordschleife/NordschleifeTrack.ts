@@ -45,7 +45,7 @@ export class NordschleifeTrack implements Track {
   readonly testPoints: readonly TestPoint[];
   readonly killHeight: number;
   readonly fog = C.fog;
-  readonly attribution = 'Pist: © OpenStreetMap contributors (ODbL) · yükseklik: SRTM';
+  readonly attribution = 'Pist: © OpenStreetMap contributors (ODbL) · elevation: SRTM';
   readonly curve: TrackCurve;
   readonly mapData: MapData;
 

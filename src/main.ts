@@ -41,6 +41,6 @@ try {
   console.error(err);
   const msg = document.createElement('pre');
   msg.className = 'boot-error';
-  msg.textContent = `Oyun başlatılamadı:\n${err instanceof Error ? err.message : String(err)}`;
+  msg.textContent = `Failed to start the game:\n${err instanceof Error ? err.message : String(err)}`;
   document.body.appendChild(msg);
 }

@@ -78,7 +78,7 @@ const KINDS: Record<TrafficKind, KindClass> = {
   police: { label: 'Polis', heavy: false, mass: 1800, accel: 2.4, comfortBrake: 3, maxLane: 2, profiles: { normal: 0.4, fast: 0.6 } },
   lightTruck: { label: 'Kamyonet', heavy: false, mass: 4500, accel: 0.9, comfortBrake: 2, maxLane: 1, profiles: { slow: 0.7, normal: 0.3 } },
   truck: { label: 'Kamyon', heavy: true, mass: 16000, accel: 0.55, comfortBrake: 1.6, maxLane: 1, profiles: { truck: 1 } },
-  bus: { label: 'Otobüs', heavy: true, mass: 13000, accel: 0.7, comfortBrake: 1.8, maxLane: 1, profiles: { bus: 1 } },
+  bus: { label: 'Bus', heavy: true, mass: 13000, accel: 0.7, comfortBrake: 1.8, maxLane: 1, profiles: { bus: 1 } },
 };
 
 const MODELS = MODEL_SIZES as Record<TrafficModelId, { kind: string; length: number; width: number; height: number; paint: number }>;
@@ -94,20 +94,20 @@ function modelled(model: TrafficModelId): TrafficClass {
 
 export const TRAFFIC_CLASSES: Record<TrafficClassId, TrafficClass> = {
   car: { label: 'Binek', shape: 'car', heavy: false, length: 4.6, width: 1.82, height: 1.45, mass: 1450, accel: 1.8, comfortBrake: 2.6, maxLane: 2, wheelRadius: 0.32, axles: [1.4, -1.35], profiles: { slow: 0.25, normal: 0.6, fast: 0.15 }, paints: GERMAN_PAINTS },
-  fastCar: { label: 'Hızlı binek', shape: 'fastCar', heavy: false, length: 4.7, width: 1.88, height: 1.32, mass: 1650, accel: 3.2, comfortBrake: 3.2, maxLane: 2, wheelRadius: 0.34, axles: [1.45, -1.4], profiles: { normal: 0.15, fast: 0.6, veryFast: 0.25 }, paints: [0x1d1f22, 0xf2f2f0, 0x6b6f75, 0x1f3354, 0xb02020, 0x9aa3ab, 0x2a4f8a] },
+  fastCar: { label: 'Fast car', shape: 'fastCar', heavy: false, length: 4.7, width: 1.88, height: 1.32, mass: 1650, accel: 3.2, comfortBrake: 3.2, maxLane: 2, wheelRadius: 0.34, axles: [1.45, -1.4], profiles: { normal: 0.15, fast: 0.6, veryFast: 0.25 }, paints: [0x1d1f22, 0xf2f2f0, 0x6b6f75, 0x1f3354, 0xb02020, 0x9aa3ab, 0x2a4f8a] },
   van: { label: 'Van', shape: 'van', heavy: false, length: 5.3, width: 2.0, height: 2.45, mass: 2600, accel: 1.2, comfortBrake: 2.2, maxLane: 2, wheelRadius: 0.36, axles: [1.75, -1.65], profiles: { slow: 0.45, normal: 0.55 }, paints: [0xf2f2f0, 0xf2f2f0, 0xc8ccd0, 0x6b6f75, 0x1f3354, 0xd0a020] },
-  truck: { label: 'Tır', shape: 'truck', heavy: true, length: 16.5, width: 2.55, height: 3.9, mass: 18000, accel: 0.55, comfortBrake: 1.6, maxLane: 1, wheelRadius: 0.5, axles: [6.4, 3.0, -4.2, -5.6, -7.0], profiles: { truck: 1 }, paints: [0xf2f2f0, 0x1f3354, 0x8a1f1f, 0x2e5d34, 0xd8d4c8, 0x6b6f75] },
+  truck: { label: 'Truck', shape: 'truck', heavy: true, length: 16.5, width: 2.55, height: 3.9, mass: 18000, accel: 0.55, comfortBrake: 1.6, maxLane: 1, wheelRadius: 0.5, axles: [6.4, 3.0, -4.2, -5.6, -7.0], profiles: { truck: 1 }, paints: [0xf2f2f0, 0x1f3354, 0x8a1f1f, 0x2e5d34, 0xd8d4c8, 0x6b6f75] },
   // Orchids Simulator Traffic Car Pack (Oren garage, CC BY 4.0): one class per vehicle.
   ...(Object.fromEntries(MODEL_IDS.map((id) => [id, modelled(id)])) as Record<TrafficModelId, TrafficClass>),
 };
 
 export const DRIVER_PROFILES: Record<DriverProfileId, DriverProfile> = {
-  slow: { label: 'Yavaş', speed: [95, 120], headway: 1.9, minGap: 3, overtakeDelta: 14, rearTtc: 9, compliance: 1 },
+  slow: { label: 'Slow', speed: [95, 120], headway: 1.9, minGap: 3, overtakeDelta: 14, rearTtc: 9, compliance: 1 },
   normal: { label: 'Normal', speed: [115, 150], headway: 1.5, minGap: 2.5, overtakeDelta: 10, rearTtc: 7, compliance: 1 },
-  fast: { label: 'Hızlı', speed: [145, 190], headway: 1.2, minGap: 2.5, overtakeDelta: 8, rearTtc: 6, compliance: 0.95 },
-  veryFast: { label: 'Çok hızlı', speed: [180, 230], headway: 1.0, minGap: 2, overtakeDelta: 6, rearTtc: 5.5, compliance: 0.9 },
+  fast: { label: 'Fast', speed: [145, 190], headway: 1.2, minGap: 2.5, overtakeDelta: 8, rearTtc: 6, compliance: 0.95 },
+  veryFast: { label: 'Very fast', speed: [180, 230], headway: 1.0, minGap: 2, overtakeDelta: 6, rearTtc: 5.5, compliance: 0.9 },
   truck: { label: 'Kamyon', speed: [82, 95], headway: 2.2, minGap: 4, overtakeDelta: 7, rearTtc: 11, compliance: 1 },
-  bus: { label: 'Otobüs', speed: [88, 100], headway: 2.1, minGap: 4, overtakeDelta: 8, rearTtc: 11, compliance: 1 },
+  bus: { label: 'Bus', speed: [88, 100], headway: 2.1, minGap: 4, overtakeDelta: 8, rearTtc: 11, compliance: 1 },
 };
 
 /** Vehicles per km per carriageway, and the most allowed at once (both carriageways). */
@@ -120,7 +120,7 @@ export const TRAFFIC_DENSITY: Record<Exclude<TrafficDensity, 'off'>, { perKm: nu
 
 /** Order the in-game key steps through, and the names shown. */
 export const TRAFFIC_DENSITY_STEPS: readonly TrafficDensity[] = ['off', 'low', 'medium', 'high', 'veryHigh'];
-export const TRAFFIC_DENSITY_LABELS: Record<TrafficDensity, string> = { off: 'Kapalı', low: 'Düşük', medium: 'Orta', high: 'Yüksek', veryHigh: 'Çok yüksek' };
+export const TRAFFIC_DENSITY_LABELS: Record<TrafficDensity, string> = { off: 'Off', low: 'Low', medium: 'Medium', high: 'High', veryHigh: 'Very high' };
 
 /** Share of each kind per variety setting; a kind's share is split evenly between its models. */
 const KIND_MIX: Record<TrafficVariety, Partial<Record<TrafficKind, number>>> = {

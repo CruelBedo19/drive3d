@@ -134,8 +134,8 @@ export class Hud {
       const key = fps * 100000 + cap;
       if (key !== this.lastFps) {
         this.lastFps = key;
-        this.fpsEl.textContent = cap > fps ? `${fps} FPS · maks ~${cap}` : `${fps} FPS`;
-        this.fpsEl.title = 'Ekran yenileme hızıyla sınırlı. "maks": bu bilgisayarın kare maliyetine göre ulaşabileceği FPS.';
+        this.fpsEl.textContent = cap > fps ? `${fps} FPS · max ~${cap}` : `${fps} FPS`;
+        this.fpsEl.title = 'Capped by display refresh. "max": the FPS this machine could reach based on frame cost.';
       }
     }
   }
